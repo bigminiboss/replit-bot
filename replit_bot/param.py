@@ -1,14 +1,15 @@
 """file that stores the Param for type hints
 
-```py
-@bot.command(...)
-def name(ctx, pass_obj: Param(
-    desc="something to pass",
-    required=False,
-    default="lol"
-)):
-    ctx.reply(pass_obj)
-```
+.. code::python
+  @bot.command(...)
+  def name(ctx, pass_obj: Param(
+      desc="something to pass",
+      required=False,
+      default="lol"
+  )):
+      ctx.reply(pass_obj)
+
+
 """
 
 from typing import Any

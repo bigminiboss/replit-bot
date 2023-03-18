@@ -17,10 +17,10 @@ pyee = "^9.0.4"
 # datauri="^1.0.0"
 
 # docs
-[tool.poetry.group.docs]
-optional = true
+# [tool.poetry.group.docs]
+# optional = true
 
-[tool.poetry.group.docs.dependencies]
+# [tool.poetry.group.docs.dependencies]
 Flask = "^2.2.0"
 waitress = "^2.1.2"
 

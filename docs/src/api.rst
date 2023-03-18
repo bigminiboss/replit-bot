@@ -7,3 +7,4 @@ API
     api/client
     api/bot
     api/post_ql
+    api/param

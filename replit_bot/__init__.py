@@ -9,5 +9,5 @@ from .queries import *
 from .links import *
 from .html_default_templates import *
 
-__version__ = "1.1.5"
+__version__ = "3.0.0"
 __license__ = "MIT"

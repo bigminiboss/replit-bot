@@ -354,7 +354,7 @@ class Bot(Client):
                 i.join()
             sleep(5)
 
-    def run(self, token: str = None) -> None:
+    def run(self, auto_create_docs: bool = True, token: str = None) -> None:
         """mainest runner code"""
         if token is not None and not self.init_:
             super()
@@ -367,7 +367,7 @@ class Bot(Client):
             )
 
         self.once("ready", on_ready)
-        self.create_docs()
+        if (auto_create_docs): self.create_docs()
 
         def _run(notif_id, notif) -> None:
             """main runner code"""
@@ -462,4 +462,6 @@ class Bot(Client):
 
         self.on("notification", _run)
         self.user.notifications.startEvents()
-        serve(app, host="0.0.0.0", port=8080)
+        if (auto_create_docs): serve(app, host="0.0.0.0", port=8080)
+        else:
+            while True: pass

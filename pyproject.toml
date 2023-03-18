@@ -1,17 +1,28 @@
 [tool.poetry]
 name = "replit-bot"
-version = "2.0.0"
+version = "3.0.0"
 description = "make discord.py like bots on replit and/or do replapi-it style replit interactions"
 authors = ["bigminboss <you@example.com>"]
 
 [tool.poetry.dependencies]
+# python ver
 python = ">=3.8.0"
+# replit db I think I can't remember lol
 replit = "^3.2.4"
-Flask = "^2.2.0"
+# these are 100% necessary
 requests = "^2.28.1"
-waitress = "^2.1.2"
-datauri = "^1.0.0"
 pyee = "^9.0.4"
+
+# kinda if I get it working
+# datauri="^1.0.0"
+
+# docs
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
+Flask = "^2.2.0"
+waitress = "^2.1.2"
 
 [tool.poetry.dev-dependencies]
 debugpy = "^1.6.2"

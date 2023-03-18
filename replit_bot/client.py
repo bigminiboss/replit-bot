@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Tuple, Callable as Function
 from .utils.JSDict import JSDict
 from replit import Database
 from datetime import datetime
-from datauri import parse
+# from datauri import parse
 from requests import post as _raw_post, get
 from .utils.switch import Switch
 from os import environ

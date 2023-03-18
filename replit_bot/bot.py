@@ -20,7 +20,7 @@ from .colors import green, blue, purple, red, end, bold_green, bold_blue
 app = Flask(__name__)
 _started_buttons = {}
 # line_sep = "-" * os.get_terminal_size().columns
-line_set = '-' * 80
+line_sep = '-' * 80
 time_header = f"{green}[TIME]{end}"
 logger: logging.Logger = logging.getLogger(__name__)
 # https://realpython.com/python-logging/

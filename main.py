@@ -4,9 +4,11 @@ import os
 import json
 import time
 import logging
+import asyncio
 from random import randint
 from requests import get
-from replit_bot import Bot, Param, __license__, __version__, app
+from replit_bot.AsyncBot import Bot
+from replit_bot import Param, __license__, __version__, app
 from threading import Thread
 from markdown import markdown
 from flask import render_template_string
@@ -22,40 +24,19 @@ bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
 
 times = []
 
-
-def fetch():
-    url = json.loads(get("https://meme-api.herokuapp.com/gimme").text)
-    counter = 0
-    while url["nsfw"]:
-        url = json.loads(get("https://meme-api.herokuapp.com/gimme").text)
-        counter += 1
-        if counter > 10:
-            return
-
-    return url["url"]
-
-
-def _resolve_timers():
-    while True:
-        for i in times:
-            if i[0] >= time.time():
-                i[1].reply("Your timer went off!")
-        time.sleep(1)
-
-
 @bot.command("enjoy-pancakes", alias=["enjoy"])
-def enjoy(ctx):
-    ctx.reply(
+async def enjoy(ctx):
+    await ctx.reply(
         f"hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
         mention=True,
     )
-    ctx.reply(
-        "You traitor" if ctx.button.get_choice() == "no" else "yay! we're friends"
+    await ctx.reply(
+        "You traitor" if await ctx.button.get_choice() == "no" else "yay! we're friends"
     )
 
 
 @bot.command("personality-quiz", alias=["quiz"])
-def person(ctx):
+async def person(ctx):
     count = {"a": 0, "b": 0}
     questions = [
         {"name": "do you like pancakes", "a": "no", "b": "yes"},
@@ -65,20 +46,20 @@ def person(ctx):
     ]
 
     for i in questions:
-        ctx.reply(
+        await ctx.reply(
             f"{i['name']}\n\n{ctx.button.a} ({i['a']})\n\n{ctx.button.b} ({i['b']})"
         )
-        count[ctx.button.get_choice()] += 1
+        count[await ctx.button.get_choice()] += 1
 
     most = max(count, key=count.get)
-    ctx.reply("You traitor" if most == "a" else "yay! we're friends")
+    await ctx.reply("You traitor" if most == "a" else "yay! we're friends")
 
 
 @bot.command("repl")
-def repl(ctx):
+async def repl(ctx):
     repl = ctx.repl
 
-    ctx.reply(
+    await ctx.reply(
         f"""**{repl.title}**•*{repl.timeUpdated}*
 ```
 ➤ Id: {repl.id}
@@ -106,33 +87,34 @@ def repl(ctx):
 
 
 @bot.command("random-number", alias=["rand", "randint", "rand-num"])
-def _random(
+async def _random(
     ctx,
     low: Param(required=True, type_cast=int),
     high: Param(required=True, type_cast=int),
 ):
-    ctx.reply(f"random number is {randint(low, high)}")
+    await ctx.reply(f"random number is {randint(low, high)}")
 
 
 @bot.command("timer")
-def _timer(ctx, num_time: Param(required=True, type_cast=int)):
+async def _timer(ctx, num_time: Param(required=True, type_cast=int)):
     global times
-    ctx.reply("starting timer")
-    times.append((time.time() + num_time, ctx))
+    await ctx.reply("starting timer")
+    await asyncio.sleep(num_time)
+    await ctx.reply("timer went off!")
 
 
 @bot.command("code-info")
-def _code_info(ctx):
-    ctx.reply(
+async def _code_info(ctx):
+    await ctx.reply(
         f"""> license: {__license__}
 > version: {__version__}"""
     )
 
 
 @bot.command("who-is")
-def on_who_is(ctx, person: Param(required=True)):
-    person = bot.users.fetch(person)
-    ctx.reply(
+async def on_who_is(ctx, person: Param(required=True)):
+    person = await bot.users.fetch(person)
+    await ctx.reply(
         f"@{person.username} is {person.firstName} {person.lastName}. They speak {person.locale} and they are verified = {person.isVerified}. Their bio is: {person.bio}. They have {person.followerCount} followers and are following {person.followCount} people",
         mention=True,
     )
@@ -147,5 +129,4 @@ def on_who_is(ctx, person: Param(required=True)):
 # def when_followed(ctx, person):
 #     person.setFollowing(True)
 
-Thread(target=_resolve_timers).start()
-bot.run()
+bot.run(auto_create_docs=True)

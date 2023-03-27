@@ -6,7 +6,7 @@ authors = ["bigminboss <you@example.com>"]
 
 [tool.poetry.dependencies]
 # python ver
-python = ">=3.8.0"
+python = ">=3.6.1,<4.0.0"
 # replit db I think I can't remember lol
 replit = "^3.2.4"
 # these are 100% necessary

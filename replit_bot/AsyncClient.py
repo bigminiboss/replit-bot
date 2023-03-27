@@ -18,7 +18,7 @@ from .exceptions import InvalidSid
 import requests
 import json
 import asyncio
-import aiolimiter
+# import aiolimiter
 import base64
 import random
 import logging
@@ -87,7 +87,7 @@ class Client(AsyncIOEventEmitter):
         self.posting_cache = Queue()
         self.ratelimit = ratelimit
         self.max_groups = 10
-        self.limiter = aiolimiter.AsyncLimiter(self.ratelimit, 1)
+        # self.limiter = aiolimiter.AsyncLimiter(self.ratelimit, 1)
         self.sid = sid
 
         __temp_headers = self.headers
@@ -316,7 +316,7 @@ class Client(AsyncIOEventEmitter):
 
     async def cached_post_wrapper(self) -> None:
         if not self.posting_cache.empty():  # deadlock equiv
-            await self.limiter.acquire()  # wait until not past rl
+            # await self.limiter.acquire()  # wait until not past rl
             await self.resolve_cached_post()
 
     async def gql(self, query: str, vars: Dict[str, Any] = {}) -> Dict[str, Any]:

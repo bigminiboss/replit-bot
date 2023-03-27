@@ -116,8 +116,7 @@ async def _code_info(ctx):
 async def on_who_is(ctx, person: Param(required=True)):
     person = await bot.users.fetch(person)
     await ctx.reply(
-        f"@{person.username} is {person.firstName} {person.lastName}. They speak {person.locale} and they are verified = {person.isVerified}. Their bio is: {person.bio}. They have {person.followerCount} followers and are following {person.followCount} people",
-        mention=True,
+        f"@{ctx.author.mention} @{person.username} is {person.firstName} {person.lastName}. They speak {person.locale} and they are verified = {person.isVerified}. Their bio is: {person.bio}. They have {person.followerCount} followers and are following {person.followCount} people"
     )
 
 

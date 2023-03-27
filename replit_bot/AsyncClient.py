@@ -611,7 +611,9 @@ class NotificationManager:
 
         @self.track.on("update")
         async def resolve_notifications(notifs) -> None:
-            for i in notifs:
+            _ = list(notifs.keys())
+            _.reverse()
+            for i in _:
                 self.c.emit("notification", i, notifs[i])
             # if len(notifs) > 0:
             #     await self.markAsRead()

@@ -226,9 +226,8 @@ class Bot(Client):
     async def parse_command(self, command: str):
         """parses command
 
-        `@Example-Bot /say message:hi!`
+        @Example-Bot /say message:hi!
         ->
-        ```
         {
             "options": {
                 "message": "hi!"
@@ -236,8 +235,6 @@ class Bot(Client):
             "ping statement": "@Example-Bot",
             "command": "hello"
         }
-        ```
-
         """
         splited = command.split(" ")
         if len(splited) < 2 or not splited[1].startswith(self.prefix):
@@ -455,7 +452,9 @@ class Bot(Client):
 
         if auto_create_docs:
             Thread(
-                target=serve, kwargs={"app": app, "host": "0.0.0.0", "port": 8080}
+                target=serve,
+                kwargs={"app": app, "host": "0.0.0.0", "port": 8080},
+                daemon=True,
             ).start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.user.notifications.startEvents())

@@ -1,6 +1,6 @@
 """file that stores the Param for type hints
 
-.. code::python
+.. code-block:: python
 
   @bot.command(...)
   def name(ctx, pass_obj: Param(
@@ -10,7 +10,7 @@
   )):
       ctx.reply(pass_obj)
 
-..
+
 """
 
 from typing import Any

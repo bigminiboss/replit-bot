@@ -3,7 +3,8 @@
 import urllib.parse
 import logging
 import os
-from .client import Client
+import asyncio
+from .AsyncClient import Client
 from .links import links
 from .html_default_templates import ORIGINAL_HTML, PARAM_BIO, HTML_LIST, BLOCKQUOTE
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List
@@ -14,7 +15,7 @@ from time import sleep
 from .param import Param
 from .exceptions import NamesMustBeAlphanumeric, MustBeRunOnReplitForButtons
 from .utils._uuid import random_characters
-from .post_ql import post
+from .AsyncPost_ql import post
 from .colors import green, blue, purple, red, end, bold_green, bold_blue
 
 app = Flask(__name__)
@@ -79,7 +80,7 @@ class Button:
 
         return f"[{key}]({links.docs}/{parsed})"
 
-    def get_choice(self):
+    async def get_choice(self):
         current = None
         while current is None:
             _ = list(_started_buttons[self.command][self.user].values())
@@ -104,40 +105,47 @@ class Bot(Client):
         api_path: str = "/api",
     ) -> None:
         if token is not None:
-            super()
+            super(Client, self).__init__()
             super().__init__(token)
             self.init_ = True
         else:
             self.init_ = False
 
-        def help_function(ctx, command):
+        async def help_function(ctx, command):
             if command == "None":
                 if links.docs is not None:
-                    ctx.reply(f"See the docs there {links.docs}")
+                    await ctx.reply(f"See the docs there {links.docs}")
                 else:
-                    ctx.reply(
+                    await ctx.reply(
                         "This bot has not docs. You can check specific commands however"
                     )
             else:
-                ctx.reply(f"description of command: {self.commands[command]['desc']}")
+                await ctx.reply(
+                    f"description of command: {self.commands[command]['desc']}"
+                )
 
-        def __current_default(ctx, *args, **kwargs):
+        async def __current_default(ctx, *args, **kwargs):
             __current = "That is not a valid command."
             __current += (
                 f" You can see the bot docs here {links.docs}"
                 if links.docs is not None
                 else ""
             )
-            ctx.reply(__current)
+            await ctx.reply(__current)
 
-        def __not_included_params(ctx, *args, **kwargs):
+        async def __not_included_params(ctx, *args, **kwargs):
             __current = "please include all required params."
             __current += (
                 f" You can check the bot docs here {links.docs}"
                 if links.docs is not None
                 else ""
             )
-            ctx.reply(__current)
+            await ctx.reply(__current)
+
+        async def _call_when_followed(ctx, person) -> None:
+            logger.info(
+                f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} @{person.username} followed bot"
+            )
 
         self.commands = {
             "help": {
@@ -156,18 +164,17 @@ class Bot(Client):
         self.alias = {}
         self.listeners = {}
         self.threads_ = []
-        self._call_when_followed = lambda ctx, person_who_followed: logger.info(
-            f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} @{person_who_followed.username} followed bot"
-        )
         self._allow_api = allow_api
         self._create_docs = create_docs
         if self._allow_api:
 
             @app.route(api_path, methods=["POST"])
-            def _raw_api():
+            async def _raw_api():
                 kwargs = {"vars": {}, "raw": True}
                 kwargs.update(request.json)
-                return post(self.sid, kwargs["query"], kwargs["vars"], kwargs["raw"])
+                return await post(
+                    self.sid, kwargs["query"], kwargs["vars"], kwargs["raw"]
+                )
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
@@ -211,16 +218,16 @@ class Bot(Client):
 
         return wrapper
 
-    def follower(self, func):
+    async def follower(self, func):
         self._call_when_followed = func
 
-    def default(self, func):
+    async def default(self, func):
         self._default = func
 
-    def fallback_param_not_included_case(self, func):
+    async def fallback_param_not_included_case(self, func):
         self._not_all_required_params_specified = func
 
-    def parse_command(self, command: str):
+    async def parse_command(self, command: str):
         """parses command
 
         `@Example-Bot /say message:hi!`
@@ -261,7 +268,7 @@ class Bot(Client):
             output["options"][_current_command] = current.rstrip()
         return output
 
-    def valid_command(self, resp: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+    async def valid_command(self, resp: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         """validates command. Returns true if is valid `(True, parsed_json)` or false if not `(False, {'None': None})`"""
         if resp == {} or resp["comment"] == None:
             return (False, {"None": None})
@@ -273,7 +280,7 @@ class Bot(Client):
             return (False, {"None": None})
         return (True, parsed)
 
-    def get_kwargs(
+    async def get_kwargs(
         self, resp: Dict[str, Any], given_params: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], bool]:
         """get arguements based on type hints of function"""
@@ -348,13 +355,6 @@ class Bot(Client):
         def _() -> None:
             return render_template("index.html", html=html)
 
-    def _delete_threads(self) -> None:
-        """thread to always destroy threads"""
-        while True:
-            for i in self.threads_:
-                i.join()
-            sleep(5)
-
     def run(self, auto_create_docs: bool = True, token: str = None) -> None:
         """mainest runner code"""
         if token is not None and not self.init_:
@@ -362,26 +362,28 @@ class Bot(Client):
             super().__init__(token)
             self.init_ = True
 
-        def on_ready(client):
+        @self.once("ready")
+        async def on_ready(client):
             logger.info(
                 f'{green}[FILE] BOT.py{end}\n{bold_green}[STARTING BOT]{end} Botting "{bold_blue}{client.user.username}{end}"'
             )
 
-        self.once("ready", on_ready)
         if auto_create_docs:
             self.create_docs()
 
-        def _run(notif_id, notif) -> None:
+        @self.on("notification")
+        async def _run(notif_id, notif) -> None:
             """main runner code"""
             # MentionedInPost, MentionedInComment, RepliedToComment, RepliedToPost, AnswerAccepted, MultiplayerJoinedEmail, MultiplayerJoinedLink, MultiplayerInvited, MultiplayerOverlimit, Warning, TeamInvite, TeamOrganizationInvite, Basic, TeamTemplateSubmitted, TeamTemplateReviewedStatus, Annotation, EditRequestCreated, EditRequestAccepted, ReplCommentCreated, ReplCommentReplyCreated, ReplCommentMention, Thread, NewFollower
-            post(self.sid, "markOneAsRead", {"id": notif_id})
+            await post(self.sid, "markOneAsRead", {"id": notif_id})
+
             __typename = getattr(notif, "__typename")
             if __typename == "WarningNotification":
                 logger.critical(
                     f"{red}[FILE] BOT.py{end}\n{red}[INFO]{end} bot has been warned"
                 )
             elif __typename == "NewFollowerNotification":
-                self._call_when_followed(self, notif.creator)
+                await self._call_when_followed(self, notif.creator)
             elif getattr(notif, "comment", False):
                 notif.comment.author = notif.comment.user
                 notif.comment.author.mention = "@" + notif.comment.author.username
@@ -390,7 +392,7 @@ class Bot(Client):
                 for i in dir(self):
                     if not i.startswith("__") and not i.endswith("__"):
                         setattr(notif.comment, i, getattr(self, i))
-                parsed_json = self.parse_command(notif.comment.body)
+                parsed_json = await self.parse_command(notif.comment.body)
                 if "command" in parsed_json and (
                     parsed_json["command"] in self.commands
                     or parsed_json["command"] in self.alias
@@ -398,7 +400,7 @@ class Bot(Client):
                     c = parsed_json["command"]
                     if parsed_json["command"] in self.alias:
                         c = self.alias[c]
-                    valid, kwargs = self.get_kwargs(
+                    valid, kwargs = await self.get_kwargs(
                         self.commands[c], parsed_json["options"]
                     )
                     if valid:
@@ -408,31 +410,23 @@ class Bot(Client):
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                         )
                         if self.commands[c]["thread"]:
-                            t = Thread(
-                                target=self.commands[c]["call"],
-                                args=(notif.comment,),
-                                kwargs=kwargs,
-                            )
-                            t.start()
-                            self.threads_.append(t)
+                            # t = Thread(
+                            #     target=self.commands[c]["call"],
+                            #     args=(notif.comment,),
+                            #     kwargs=kwargs,
+                            # )
+                            # t.start()
+                            # self.threads_.append(t)
+                            await self.commands[c]["call"](notif.comment, **kwargs)
                         else:
-                            self.commands[c]["call"](notif.comment, **kwargs)
+                            await self.commands[c]["call"](notif.comment, **kwargs)
                     else:
-                        logger.info(
-                            f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
-                        )
-                        __current = "please include all required params."
-                        __current += (
-                            f" You can check the bot docs here {links.docs}"
-                            if links.docs is not None
-                            else ""
-                        )
-                        notif.comment.reply(__current)
+                        await self._not_all_required_params_specified(notif.comment)
                 elif "command" in parsed_json and (
                     parsed_json["command"] in self.listeners
                 ):
                     c = parsed_json["command"]
-                    valid, kwargs = self.get_kwargs(
+                    valid, kwargs = await self.get_kwargs(
                         self.listeners[c], parsed_json["options"]
                     )
                     if valid:
@@ -442,28 +436,29 @@ class Bot(Client):
                         )
                         for command in self.listeners[c]:
                             if command[c]["thread"]:
-                                t = Thread(
-                                    target=command[c]["call"],
-                                    args=(notif.comment,),
-                                    kwargs=kwargs,
-                                )
-                                t.start()
-                                self.threads_.append(t)
+                                # t = Thread(
+                                #     target=command[c]["call"],
+                                #     args=(notif.comment,),
+                                #     kwargs=kwargs,
+                                # )
+                                # t.start()
+                                # self.threads_.append(t)
+                                await command[c]["call"](notif.comment, **kwargs)
                             else:
-                                command[c]["call"](notif.comment, **kwargs)
+                                await command[c]["call"](notif.comment, **kwargs)
                     else:
                         logger.info(
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                         )
-                        self._not_all_required_params_specified(notif.comment)
+                        await self._not_all_required_params_specified(notif.comment)
                 elif "command" in parsed_json:
                     logger.info(
                         f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                     )
-                    self._default(notif.comment)
+                    await self._default(notif.comment)
 
-        self.on("notification", _run)
-        self.user.notifications.startEvents()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.user.notifications.startEvents())
         if auto_create_docs:
             serve(app, host="0.0.0.0", port=8080)
         else:

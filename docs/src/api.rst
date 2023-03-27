@@ -8,3 +8,5 @@ API
     api/bot
     api/post_ql
     api/param
+    api/AsyncClient
+    api/AsyncBot

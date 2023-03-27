@@ -7,7 +7,7 @@ import logging
 import asyncio
 from random import randint
 from requests import get
-from replit_bot import Bot, Param, __license__, __version__, app
+from replit_bot.AsyncBot import Bot, Param, __license__, __version__, app
 from threading import Thread
 from markdown import markdown
 from flask import render_template_string

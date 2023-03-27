@@ -29,7 +29,7 @@ headers: Dict[str, str] = {
 }
 number_convert: List[str] = ["1st", "2nd", "3rd"]
 __reset_status_codes: List[int] = [429, 403, 520, 503, 502, 500]
-
+s = ClientSession(headers=headers)
 
 async def post(
     connection: str,
@@ -40,7 +40,6 @@ async def post(
     __different_endpoint: str = None,
 ):
     """post query with vars to replit graph query language"""
-    s = ClientSession(headers=headers)
 
     class InitialRequest:
         def __init__(self):

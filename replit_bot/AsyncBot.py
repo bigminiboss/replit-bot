@@ -4,7 +4,7 @@ import urllib.parse
 import logging
 import os
 import asyncio
-from .client import Client
+from .AsyncClient import Client
 from .links import links
 from .html_default_templates import ORIGINAL_HTML, PARAM_BIO, HTML_LIST, BLOCKQUOTE
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List

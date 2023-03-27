@@ -4,7 +4,7 @@ import urllib.parse
 import logging
 import os
 import asyncio
-from .AsyncClient import Client
+from .client import Client
 from .links import links
 from .html_default_templates import ORIGINAL_HTML, PARAM_BIO, HTML_LIST, BLOCKQUOTE
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List
@@ -15,7 +15,7 @@ from time import sleep
 from .param import Param
 from .exceptions import NamesMustBeAlphanumeric, MustBeRunOnReplitForButtons
 from .utils._uuid import random_characters
-from .AsyncPost_ql import post
+from .post_ql import post
 from .colors import green, blue, purple, red, end, bold_green, bold_blue
 
 app = Flask(__name__)
@@ -101,7 +101,6 @@ class Bot(Client):
         prefix: str = "/",
         bio: str = "",
         allow_api: bool = False,
-        create_docs: bool = True,
         api_path: str = "/api",
     ) -> None:
         if token is not None:
@@ -165,16 +164,13 @@ class Bot(Client):
         self.listeners = {}
         self.threads_ = []
         self._allow_api = allow_api
-        self._create_docs = create_docs
         if self._allow_api:
 
             @app.route(api_path, methods=["POST"])
             async def _raw_api():
                 kwargs = {"vars": {}, "raw": True}
                 kwargs.update(request.json)
-                return await post(
-                    self.sid, kwargs["query"], kwargs["vars"], kwargs["raw"]
-                )
+                return await self.gql(kwargs["query"], kwargs["vars"], kwargs["raw"])
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
@@ -375,7 +371,7 @@ class Bot(Client):
         async def _run(notif_id, notif) -> None:
             """main runner code"""
             # MentionedInPost, MentionedInComment, RepliedToComment, RepliedToPost, AnswerAccepted, MultiplayerJoinedEmail, MultiplayerJoinedLink, MultiplayerInvited, MultiplayerOverlimit, Warning, TeamInvite, TeamOrganizationInvite, Basic, TeamTemplateSubmitted, TeamTemplateReviewedStatus, Annotation, EditRequestCreated, EditRequestAccepted, ReplCommentCreated, ReplCommentReplyCreated, ReplCommentMention, Thread, NewFollower
-            await post(self.sid, "markOneAsRead", {"id": notif_id})
+            await self.gql("markOneAsRead", {"id": notif_id})
 
             __typename = getattr(notif, "__typename")
             if __typename == "WarningNotification":
@@ -457,10 +453,9 @@ class Bot(Client):
                     )
                     await self._default(notif.comment)
 
+        if auto_create_docs:
+            Thread(
+                target=serve, kwargs={"app": app, "host": "0.0.0.0", "port": 8080}
+            ).start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.user.notifications.startEvents())
-        if auto_create_docs:
-            serve(app, host="0.0.0.0", port=8080)
-        else:
-            while True:
-                pass

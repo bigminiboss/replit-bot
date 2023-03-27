@@ -1,4 +1,4 @@
-from .AsyncPost_ql import post, headers
+# from .post_ql import post, headers
 from typing import Dict, Any, List, Tuple, Callable as Function
 from .utils.JSDict import JSDict
 from replit import Database
@@ -18,8 +18,16 @@ from .exceptions import InvalidSid
 import requests
 import json
 import asyncio
-import aiohttp
+import aiolimiter
 import base64
+import random
+import logging
+from .queries import q
+from .colors import green, end, purple, red, bold_green, bold_blue, blue
+from aiohttp import ClientSession
+from queue import Queue
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class module:
@@ -47,31 +55,57 @@ class Track(AsyncIOEventEmitter):
                 if n != last:
                     self.emit("update", n)
                 self.last = n
-                sleep(self.ms)
+                await asyncio.sleep(self.ms)
 
         await call_func()
 
     async def stop(self) -> None:
-        if self.t is not None:
+        if self.running:
             self.running = False
-            self.t.join()
 
 
 class Client(AsyncIOEventEmitter):
-    def __init__(self, sid: str) -> None:
+    def __init__(self, sid: str, ratelimit: int = 5) -> None:
         super()
         super().__init__()
 
+        self.backup: str = "https://graphql-playground.pikachub2005.repl.co/"
+        self.endpoint: str = "https://replit.com/graphql"
+        self.headers: Dict[str, str] = {
+            "X-Requested-With": "replit",
+            "Origin": "https://replit.com",
+            "Accept": "application/json",
+            "Referrer": "https://replit.com",
+            "Content-Type": "application/json",
+            "Connection": "keep-alive",
+            "Host": "replit.com",
+            "x-requested-with": "XMLHttpRequest",
+            "User-Agent": "Mozilla/5.0",
+        }
+        self.number_convert: List[str] = ["1st", "2nd", "3rd"]
+        self.__reset_status_codes: List[int] = [429, 403, 520, 503, 502, 500]
+        self.posting_cache = Queue()
+        self.ratelimit = ratelimit
+        self.max_groups = 10
+        self.limiter = aiolimiter.AsyncLimiter(self.ratelimit, 1)
         self.sid = sid
 
+        __temp_headers = self.headers
+        __temp_headers["Cookie"] = f"connect.sid={self.sid}"
+
+        self.session = ClientSession(headers=__temp_headers)
+
         async def __temp_post_wrapper_cu():
-            return await post(self.sid, "currentUser")
+            data = await self.gql("currentUser")
+            if "currentUser" not in data or not data["currentUser"]:
+                raise InvalidSid("SID invalid")
+            return data
 
         async def __temp_post_wrapper_update_cu(data):
             return await self.user.update(data)
 
         async def __temp_post_wrapper_repl():
-            return await post(self.sid, "repl", vars={"id": environ["REPL_ID"]})
+            return await self.gql("repl", vars={"id": environ["REPL_ID"]})
 
         async def __temp_post_wrapper_update_repl(data):
             return await self.repl.update(data)
@@ -85,8 +119,7 @@ class Client(AsyncIOEventEmitter):
         self.comments = CommentManager(self, self)
         loop = asyncio.get_event_loop()
         data = loop.run_until_complete(__temp_post_wrapper_cu())
-        if "currentUser" not in data or not data["currentUser"]:
-            raise InvalidSid("SID invalid")
+
         vars = data["currentUser"]
         # vars.update({"countryCode": data["country"]})
         self.user = CurrentUser(self)
@@ -114,7 +147,7 @@ class Client(AsyncIOEventEmitter):
         current.update(options)
         _ = current
         options = JSDict(current)
-        res = await post(self.sid, "search", vars={"options": _})
+        res = await self.gql("search", vars={"options": _})
         search = res["search"]
         results = {"repls": {}, "templates": {}, "users": {}, "posts": {}, "tags": []}
         for r in search["replResults"]["results"]["items"]:
@@ -134,11 +167,11 @@ class Client(AsyncIOEventEmitter):
                 self.users.cache[user.username] = user
             results["users"][user.username] = user
         for p in search["postResults"]["results"]["items"]:
-            post = Post(self)
-            await post.update(u)
+            _post = Post(self)
+            await _post.update(u)
             if options.cache:
-                self.users.cache[post.id] = post
-            results["posts"][post.id] = post
+                self.users.cache[_post.id] = _post
+            results["posts"][_post.id] = _post
         for t in search["tagResults"]["results"]["items"]:
             current = t["tag"]
             current["lastUsed"] = t["timeLastUsed"]
@@ -147,27 +180,167 @@ class Client(AsyncIOEventEmitter):
         return results
 
     async def login(self, username: str, password: str) -> str:
-        return await post(
-            self.sid, "login", {"username": username, "password": password}
-        )
+        return await self.gql("login", {"username": username, "password": password})
 
-    async def graphql(self, query: str, vars: Dict[str, Any] = {}) -> Dict[str, Any]:
-        return await post(self.sid, query, vars, raw=True)
+    async def graphql(
+        self, sid: str, query: str, vars: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        """specify sid for post"""
+        return await self.post(query, vars, connection=sid)
+
+    async def post(
+        self,
+        query: str,
+        vars: Dict[str, Any] = {},
+        raw: bool = False,
+        retry_for_internal_errors: bool = True,
+        __different_endpoint: str = None,
+        connection: str = None,
+    ):
+        """post query with vars to replit graph query language"""
+
+        __temp_headers = {}
+
+        if connection is not None:
+            __temp_headers["Cookie"] = f"connect.sid={connection}"
+
+        class InitialRequest:
+            def __init__(self):
+                self.status_code = 429
+                self.text = ""
+
+        req = InitialRequest()
+        number_of_attempts = 0
+        max_attempts = 7
+        if __different_endpoint is None:
+            __different_endpoint = self.endpoint
+        while (
+            req.status_code in self.__reset_status_codes
+            or str(req.status_code).startswith("5")
+        ) and number_of_attempts < max_attempts:  # only try 7 times
+            current_endpoint = f"{__different_endpoint}?e={int(random.random() * 100)}"
+            async with self.session.post(
+                current_endpoint,
+                json={"query": (query if raw else q[query]), "variables": vars},
+                headers=__temp_headers,
+            ) as r:
+                json_body = await r.json()
+                text_body = await r.text()
+                status = r.status
+            if status in self.__reset_status_codes or str(status).startswith("5"):
+                N_TH = (
+                    self.number_convert[number_of_attempts]
+                    if number_of_attempts < 3
+                    else str(number_of_attempts + 1) + "th"
+                )
+                logger.warning(
+                    f"{green}[FILE] POST_QL.py{end}\n{red}[WARNING]{end}\n{red}[STATUS CODE] {status}\n\t{red}[INFO]{end} You have been ratelimited\n\t{bold_blue}[SUMMARY]{end} Retrying query for the {N_TH} time (max retries is 5)"
+                )
+                number_of_attempts += 1
+                sleep(
+                    5 * (number_of_attempts)
+                )  # as not to overload the server, the sleep time increases per num attempts
+                continue
+
+            vars_max = 200
+            query_max = 100
+            text_max = 200
+            _query = query
+            _vars = (
+                f" {vars}"
+                if (len(json.dumps(vars, indent=8)) + 3 >= vars_max or len(vars) <= 1)
+                else f"\n\t\t\t{json.dumps(vars, indent=16)[:-1]}\t\t\t" + "}"
+            )
+            _text = text_body.strip()
+
+            if len(_vars) >= vars_max:
+                _vars = _vars[: vars_max - 3] + "..."
+            if len(_query) >= query_max:
+                _query = _query[: query_max - 3] + "..."
+            if len(_text) >= text_max:
+                _text = _text[: text_max - 3] + "..."
+            if status == 200:
+                logger.info(
+                    f"{green}[FILE] POST_QL.py{end}\n{green}[INFO]{end} {bold_green}Successful graphql!{end}\n\t{blue}[SUMMARY]{end} queried replit's graphql with these query and vars.\n\t{purple}[EXTRA]{end}\n\t\t{bold_blue}[QUERY]{end} {query}\n\t\t{bold_blue}[VARS]{end}{_vars}\n\t\t{bold_blue}[RESPONSE]{end} {_text}\n\t\t{bold_blue}[IS RAW QUERY]{end} {raw}\n\t\t{bold_blue}[URL END POINT]{end} {current_endpoint}"
+                )
+            else:
+                return logger.error(
+                    f"{red}[FILE] POST_QL.py{end}\n{red}[STATUS CODE] {status}\n\t{purple}[EXTRA]{end} {_text}\n\t\t{bold_blue}[QUERY]{end} {query}\n\t\t{bold_blue}[VARS]{end}{_vars}\n\t\t{bold_blue}[IS RAW QUERY]{end} {raw}\n\t\t{bold_blue}[URL END POINT]{end} {current_endpoint}\n\t\t{bold_blue}[RETRY]{end} {retry_for_internal_errors}"
+                )
+            res = json_body
+            if res is None or res["data"] is None:
+                return None
+
+            try:
+                _ = list(map(lambda x: x["data"], list(res["data"])))
+                return _
+            except:
+                if "data" in res["data"]:
+                    return res["data"]["data"]
+                else:
+                    if "data" in res:
+                        return res["data"]
+                    else:
+                        return res
+
+    async def resolve_cached_post(self) -> None:
+        """resolves top x cached posts"""
+        amt = 0
+        input_json_list = []
+        while amt < self.max_groups and not self.posting_cache.empty():
+            input_json_list.append(self.posting_cache.get())
+            amt += 1
+
+        if amt == 0:
+            return
+
+        prepared_json = list(map(lambda x: x["input"], input_json_list))
+        for i in prepared_json:
+            if i["query"] in q:
+                i["query"] = q[i["query"]]
+        current_endpoint = f"{self.endpoint}?e={int(random.random() * 100)}"
+        async with self.session.post(current_endpoint, json=prepared_json) as r:
+            json_body = await r.json()
+            text_body = await r.text()
+            status = r.status
+            for x, y in zip(json_body, input_json_list):
+                if "data" in x and x["data"] and "data" in x["data"]:
+                    x = x["data"]["data"]
+                else:
+                    if "data" in x:
+                        x = x["data"]
+                    else:
+                        x = x
+                y["resp"].set_result(x)
+                await y["resp"]
+
+    async def cached_post_wrapper(self) -> None:
+        if not self.posting_cache.empty():  # deadlock equiv
+            await self.limiter.acquire()  # wait until not past rl
+            await self.resolve_cached_post()
 
     async def gql(self, query: str, vars: Dict[str, Any] = {}) -> Dict[str, Any]:
-        return await self.graphql(query, vars)
+        """always sends to server with client sid"""
+        loop = asyncio.get_event_loop()
+        future = loop.create_future()
+        self.posting_cache.put_nowait(
+            {"resp": future, "input": {"query": query, "variables": vars}}
+        )
+
+        loop.create_task(self.cached_post_wrapper())
+        return await future
+        # return await self.post(query, vars)
 
     def requests(self) -> module:
         return requests
 
     async def uploadImage(self, datauri: str) -> str:
-        async with aiohttp.ClientSession(headers=headers) as s:
-            async with s.post(
-                "https://replit.com/data/images/upload",
-                {"context": "profile-image", "image": datauri},
-            ) as r:
-                json_body = await r.json()
-                return json_body["data"]["url"]
+        async with self.session.post(
+            "https://replit.com/data/images/upload",
+            {"context": "profile-image", "image": datauri},
+        ) as r:
+            json_body = await r.json()
+            return json_body["data"]["url"]
 
 
 class UserManager:
@@ -202,7 +375,7 @@ class UserManager:
                 match = self.cache[var]
                 return match
 
-        res = await post(self.c.sid, query, variables)
+        res = await self.c.gql(query, variables)
         if not res[query]:
             return None
         user = User(self.c)
@@ -215,8 +388,8 @@ class UserManager:
         current = {"cache": True, "limit": 10}
         current.update(options)
         options = JSDict(current)
-        res = await post(
-            self.c.sid, "userSearch", vars={"query": query, "limit": options.limit}
+        res = await self.c.gql(
+            "userSearch", vars={"query": query, "limit": options.limit}
         )
         users = res["usernameSearch"]
         c = {}
@@ -238,8 +411,8 @@ class UserEventManager:
         current = {"cache": True, "limit": 10}
         current.update(options)
         options = JSDict(current)
-        res = await post(
-            self.c.sid, "getUserEventsFeed", vars={"count": options.limit, "after": ""}
+        res = await self.c.gql(
+            "getUserEventsFeed", vars={"count": options.limit, "after": ""}
         )
         events = res["getUserEventsFeed"]["items"]
         c = {}
@@ -266,10 +439,8 @@ class ReplManager:
                 options = JSDict(options)
                 c = {}
                 for path in options.paths:
-                    res = await post(
-                        self.c.sid,
-                        "dashboardRepls",
-                        vars={"path": path, "count": options.limit},
+                    res = await self.c.gql(
+                        "dashboardRepls", vars={"path": path, "count": options.limit}
                     )
                     repls = res["currentUser"]["replFolderByPath"]["repls"]["items"]
                     for r in repls:
@@ -283,8 +454,7 @@ class ReplManager:
                 options = {"cache": True, "limit": 10, "search": None}
                 options.update(kwargs)
                 options = JSDict(options)
-                res = await post(
-                    self.c.sid,
+                res = await self.c.gql(
                     "profileRepls",
                     vars={"username": self.user.username, "count": options.limit},
                 )
@@ -315,7 +485,7 @@ class ReplManager:
                 return None
             if not options.force and "id" in vars and vars["id"] in self.cache:
                 return self.cache[vars["id"]]
-            res = await post(self.c.sid, "repl", vars=vars)
+            res = await self.c.gql("repl", vars=vars)
             repl = Repl(self.c)
             await repl.update(res["repl"])
             if options.cache:
@@ -323,7 +493,7 @@ class ReplManager:
             return repl
 
     async def generateTitle(self) -> str:
-        res = await post(self.c.sid, "replTitle")
+        res = await self.c.gql("replTitle")
         return res["replTitle"]
 
     async def create(self, options: Dict[str, Any] = {}):
@@ -332,7 +502,7 @@ class ReplManager:
         options = current
         cache = options["cache"]
         del options["cache"]
-        res = await post(self.c.sid, "createRepl", vars={"input": options})
+        res = await self.c.gql("createRepl", vars={"input": options})
         r = res["createRepl"]
         if "id" not in r or not r["id"]:
             return None
@@ -360,7 +530,7 @@ class PostManager:
             options = {"cache": True}
             options.update(kwargs)
             options = JSDict(options)
-            res = await post(self.c.sid, "post", vars={"id": id})
+            res = await self.c.gql("post", vars={"id": id})
             if "post" not in res or not res["post"]:
                 return None
             _post = Post(self.c)
@@ -372,8 +542,7 @@ class PostManager:
             options = {"cache": True, "limit": 10, "order": "new"}
             options.update(kwargs)
             options = JSDict(options)
-            res = await post(
-                self.c.sid,
+            res = await self.c.gql(
                 "userPosts",
                 vars={"username": self.parent.username, "count": options.limit},
             )
@@ -394,8 +563,7 @@ class PostManager:
         ):
             return None
         options = {"cache": True, "limit": 10, "tags": []}
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "trending",
             vars={
                 "options": {
@@ -438,8 +606,7 @@ class NotificationManager:
         current = {"cache": True, "seen": False, "limit": 10}
         current.update(options)
         options = JSDict(current)
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "notifications",
             vars={"count": options.limit, "seen": options.seen},
         )
@@ -461,11 +628,11 @@ class NotificationManager:
         options = JSDict(current)
         res = {"notifications": {"items": [None for i in range(options.limit)]}}
         while len(res["notifications"]["items"]) >= options.limit:
-            res = await post(
-                self.c.sid,
+            res = await self.c.gql(
                 "notifications",
                 vars={"count": options.limit, "seen": options.seen},
             )
+
             notifications = res["notifications"]["items"]
             options.limit *= 10
         c = {}
@@ -478,7 +645,7 @@ class NotificationManager:
         return c
 
     async def markAsRead(self) -> None:
-        await post(self.c.sid, "markAsRead")
+        await self.c.gql("markAsRead")
         self.c.user.notificationCount = 0
 
     async def startEvents(self) -> None:
@@ -498,8 +665,7 @@ class MultiplayerManager:
         user = await self.c.users.fetch(userResolvable)
         if not user:
             return None
-        await post(
-            self.c.sid,
+        await self.c.gql(
             "addMultiplayer",
             vars={"username": user.username, "replId": self.repl.id, "type": "rw"},
         )
@@ -508,8 +674,7 @@ class MultiplayerManager:
         user = await self.c.users.fetch(userResolvable)
         if not user:
             return None
-        await post(
-            self.c.sid,
+        await self.c.gql(
             "removeMultiplayer",
             vars={
                 "username": user.username,
@@ -529,8 +694,7 @@ class FollowingManager:
         current = {"cache": True, "limit": 10}
         current.update(options)
         options = current
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "follows",
             vars={"username": self.user.username, "count": options["limit"]},
         )
@@ -554,8 +718,7 @@ class FollowingManager:
         user = await self.c.users.fetch(userResolvable)
         if not user:
             return False
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "follow",
             vars={"input": {"targetUserId": user.id, "shouldFollow": should_follow}},
         )
@@ -575,8 +738,7 @@ class FollowersManager:
         current = {"cache": True, "limit": 10}
         current.update(options)
         options = JSDict(current)
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "followers",
             vars={"username": self.user.username, "count": options.limit},
         )
@@ -616,7 +778,7 @@ class CommentManager:
                 if id in self.cache:
                     _comment = self.cache[id]
                     return _comment
-            res = await post(self.c.sid, "replComment", vars={"id": id})
+            res = await self.c.gql("replComment", vars={"id": id})
             c = res["replComment"]
             if "message" in c:
                 return None
@@ -634,8 +796,7 @@ class CommentManager:
             options = {"cache": True, "limit": 10}
             options.update(arguements)
             options = JSDict(options)
-            res = await post(
-                self.c.sid,
+            res = await self.c.gql(
                 "replComments",
                 vars={"id": self.parent.id, "count": options.limit},
             )
@@ -655,8 +816,7 @@ class CommentManager:
             options = {"cache": True, "limit": 10}
             options.update(arguements)
             options = JSDict(options)
-            res = await post(
-                self.c.sid,
+            res = await self.c.gql(
                 "userComments",
                 vars={"username": self.parent.username, "count": options.limit},
             )
@@ -694,8 +854,7 @@ class User:
 
     async def setFollowing(self, should_follow: bool = True) -> bool:
         """follow a user and return whether they are following you"""
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "follow",
             vars={
                 "input": {
@@ -711,8 +870,7 @@ class User:
 
     async def setBlock(self, should_block: bool = True) -> bool:
         """blocks a user and return whether they are blocking you"""
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "block",
             vars={
                 "input": {
@@ -782,22 +940,22 @@ class CurrentUser(User):
         image = options["image"]
         del options["image"]
         if image:
+            # from stackoverflow, ok -_-
             binary = open(image, "rb").read()
             base64_utf8_str = base64.b64encode(binary).decode("utf-8")
             ext = image.split(".")[-1]
             i = f"data:image/{ext};base64,{base64_utf8_str}"
             if i:
-                async with aiohttp.ClientSession(headers=headers) as s:
-                    async with s.post(
-                        "https://replit.com/data/images/upload",
-                        {"context": "profile-image", "image": i},
-                        headers={"Cookie": f"connect.sid={self.c.sid}"},
-                    ) as r:
-                        json_body = await r.json()
-                        status = r.status
+                async with self.c.session.post(
+                    "https://replit.com/data/images/upload",
+                    {"context": "profile-image", "image": i},
+                    headers={"Cookie": f"connect.sid={self.c.sid}"},
+                ) as r:
+                    json_body = await r.json()
+                    status = r.status
                 if status == 200:
-                    options["profileImageId"] = json_data["data"]["id"]
-        res = await post(self.c.sid, "updateUser", vars={"input": options})
+                    options["profileImageId"] = json_body["data"]["id"]
+        res = await self.c.gql("updateUser", vars={"input": options})
         await self.update(res["updateCurrentUser"])
         return self
 
@@ -975,7 +1133,7 @@ class Repl:
         self, options: Dict[str, Any] = {"cache": True}
     ) -> Dict[str, Any]:
         options = JSDict(options)
-        res = await post(self.c.sid, "replThreads", vars={"id": self.id})
+        res = await self.c.gql("replThreads", vars={"id": self.id})
         threads = res["repl"]["annotationAnchors"]
         c = {}
         for t in threads:
@@ -1003,7 +1161,7 @@ class Repl:
         options = current
         cache = options["cache"]
         del options["cache"]
-        res = await post(self.c.sid, "createRepl", vars={"input": options})
+        res = await self.c.gql("createRepl", vars={"input": options})
         r = res["createRepl"]
         if not r["id"]:
             return None
@@ -1014,18 +1172,17 @@ class Repl:
         return repl
 
     async def delete(self) -> None:
-        await post(self.c.sid, "deleteRepl", vars={"id": self.id})
+        await self.c.gql("deleteRepl", vars={"id": self.id})
 
     async def change(self, options: Dict[str, Any] = {}):
         options.update({"id": self.id})
-        res = await post(self.c.sid, "updateRepl", vars={"input": options})
+        res = await self.c.gql("updateRepl", vars={"input": options})
         await self.update(res["updateRepl"]["repl"])
         return self
 
     async def comment(self, body: str, options: Dict[str, Any] = {"cache": True}):
         options = JSDict(options)
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "sendReplComment",
             vars={"input": {"body": body, "replId": self.id}},
         )
@@ -1038,9 +1195,9 @@ class Repl:
         return comment
 
     async def report(self, reason: str) -> str:
-        return await post(
-            self.c.sid, "reportRepl", {"replId": self.id, "reason": reason}
-        )["createBoardReport"]["id"]
+        return await self.c.gql("reportRepl", {"replId": self.id, "reason": reason})[
+            "createBoardReport"
+        ]["id"]
 
     async def likes(self) -> List[str]:
         async def fetch_once(after=None):
@@ -1048,7 +1205,7 @@ class Repl:
                 vars = {"after": after, "url": self.url}
             else:
                 vars = {"url": self.url}
-            res = await post(self.c.sid, "usersWhoLikedRepl", vars=vars)
+            res = await self.c.gql("usersWhoLikedRepl", vars=vars)
             if "repl" not in res or not res["repl"]:
                 return None
             current = list(map(lambda x: x["votes"], res["repl"]["posts"]["items"]))
@@ -1208,7 +1365,7 @@ class Comment:
         if "delete" not in self.currentUserPermission:
             self.currentUserPermission["delete"] = None
         if self.currentUserPermission["delete"] or self.isAuthor or self.repl.isOwner:
-            await post(self.c.sid, "deleteComment", vars={"id": self.id})
+            await self.c.gql("deleteComment", vars={"id": self.id})
 
     async def reply(self, body: str, **options: Dict[str, Any]):
         """reply comment"""
@@ -1224,8 +1381,7 @@ class Comment:
             id = self.parentComment.id
         else:
             id = self.id
-        res = await post(
-            self.c.sid,
+        res = await self.c.gql(
             "sendReplCommentReply",
             vars={"input": {"body": send_text, "replCommentId": id}},
         )

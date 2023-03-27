@@ -24,6 +24,7 @@ bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
 
 times = []
 
+
 @bot.command("enjoy-pancakes", alias=["enjoy"])
 async def enjoy(ctx):
     await ctx.reply(

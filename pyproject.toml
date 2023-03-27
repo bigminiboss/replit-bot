@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "replit-bot"
-version = "4.0.0"
+version = "4.0.1"
 description = "make discord.py like bots on replit and/or do replapi-it style replit interactions"
 authors = ["bigminboss <you@example.com>"]
 

@@ -31,6 +31,7 @@ number_convert: List[str] = ["1st", "2nd", "3rd"]
 __reset_status_codes: List[int] = [429, 403, 520, 503, 502, 500]
 s = ClientSession(headers=headers)
 
+
 async def post(
     connection: str,
     query: str,

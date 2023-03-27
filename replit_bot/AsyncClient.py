@@ -299,21 +299,36 @@ class Client(AsyncIOEventEmitter):
         for i in prepared_json:
             if i["query"] in q:
                 i["query"] = q[i["query"]]
-        current_endpoint = f"{self.endpoint}?e={int(random.random() * 100)}"
-        async with self.session.post(current_endpoint, json=prepared_json) as r:
-            json_body = await r.json()
-            text_body = await r.text()
-            status = r.status
-            for x, y in zip(json_body, input_json_list):
-                if "data" in x and x["data"] and "data" in x["data"]:
-                    x = x["data"]["data"]
-                else:
-                    if "data" in x:
-                        x = x["data"]
+
+        retries = 0
+        status = 500
+        while (retries < 7 and str(status).startswith("5")):  
+            current_endpoint = f"{self.endpoint}?e={int(random.random() * 100)}"
+            async with self.session.post(current_endpoint, json=prepared_json) as r:
+                json_body = await r.json()
+                text_body = await r.text()
+                status = r.status
+                if (str(status).startswith("5")):
+                    retries += 1
+                    await asyncio.sleep(5 * (retries))
+                    continue
+                    
+                for x, y in zip(json_body, input_json_list):
+                    if "data" in x and x["data"] and "data" in x["data"]:
+                        x = x["data"]["data"]
                     else:
-                        x = x
-                y["resp"].set_result(x)
-                await y["resp"]
+                        if "data" in x:
+                            x = x["data"]
+                        else:
+                            x = x
+                    y["resp"].set_result(x)
+                    await y["resp"]
+
+        if (str(status).startswith("5")):
+            for i in input_json_list:
+                if (not i["resp"].done()):
+                    i["resp"].set_result(None)
+                    await i["resp"]
 
     async def cached_post_wrapper(self) -> None:
         if not self.posting_cache.empty():  # deadlock equiv
@@ -329,7 +344,7 @@ class Client(AsyncIOEventEmitter):
         )
 
         loop.create_task(self.cached_post_wrapper())
-        return await future
+        return future
         # return await self.post(query, vars)
 
     def requests(self) -> module:

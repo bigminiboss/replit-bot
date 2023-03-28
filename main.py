@@ -8,10 +8,12 @@ import asyncio
 from random import randint
 from requests import get
 from replit_bot.AsyncBot import Bot
-from replit_bot import Param, __license__, __version__, app
+from replit_bot import Param, __license__, __version__
 from threading import Thread
 from markdown import markdown
-from flask import render_template_string
+from flask import Flask, render_template_string
+
+app = Flask("replit_bot")
 
 app.route("/docs")(
     lambda: render_template_string(
@@ -61,7 +63,7 @@ async def repl(ctx):
     repl = ctx.repl
 
     await ctx.reply(
-        f"""**{repl.title}**•*{repl.timeUpdated}*
+        f"""**{repl.title}**•**{repl.timeUpdated}**
 ```
 ➤ Id: {repl.id}
 ➤ Created: {repl.timeCreated}
@@ -129,4 +131,4 @@ async def on_who_is(ctx, person: Param(required=True)):
 # def when_followed(ctx, person):
 #     person.setFollowing(True)
 
-bot.run(auto_create_docs=True)
+bot.run(auto_create_docs=True, flask_app=app)

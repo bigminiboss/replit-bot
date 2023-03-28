@@ -18,7 +18,6 @@ from .utils._uuid import random_characters
 from .post_ql import post
 from .colors import green, blue, purple, red, end, bold_green, bold_blue
 
-app = Flask(__name__)
 _started_buttons = {}
 # line_sep = "-" * os.get_terminal_size().columns
 line_sep = "-" * 80
@@ -31,31 +30,6 @@ logging.basicConfig(
     datefmt="%d-%b-%y %H:%M:%S",
     level=logging.INFO,
 )
-
-
-@app.route("/<command>/<user>/<choice>/<rand_chars>")
-def _parse_button_commands(command, user, choice, rand_chars):
-    global _started_buttons
-    if request.headers["X-Replit-User-Name"] == "":
-        return render_template(
-            "index.html",
-            html='<center><div><script authed="location.reload()" src="https://auth.util.repl.co/script.js"></script></div></center>',
-        )
-    if (
-        command in _started_buttons
-        and user in _started_buttons[command]
-        and rand_chars in _started_buttons[command][user]
-        and user == request.headers["X-Replit-User-Name"]
-    ):
-        _started_buttons[command][user][rand_chars] = choice
-        return render_template(
-            "index.html",
-            html="<center><h1>your request has been processed, you can close this tab</h1></center>",
-        )
-    else:
-        return render_template(
-            "index.html", html="<center><h1>you cannot do this right now</h1></center>"
-        )
 
 
 class Button:
@@ -115,9 +89,7 @@ class Bot(Client):
                 if links.docs is not None:
                     await ctx.reply(f"See the docs there {links.docs}")
                 else:
-                    await ctx.reply(
-                        "This bot has not docs. You can check specific commands however"
-                    )
+                    await ctx.reply(self.generate_doc_html())
             else:
                 await ctx.reply(
                     f"description of command: {self.commands[command]['desc']}"
@@ -128,7 +100,7 @@ class Bot(Client):
             __current += (
                 f" You can see the bot docs here {links.docs}"
                 if links.docs is not None
-                else ""
+                else self.generate_doc_html()
             )
             await ctx.reply(__current)
 
@@ -137,11 +109,11 @@ class Bot(Client):
             __current += (
                 f" You can check the bot docs here {links.docs}"
                 if links.docs is not None
-                else ""
+                else self.generate_doc_html()
             )
             await ctx.reply(__current)
 
-        async def _call_when_followed(ctx, person) -> None:
+        async def __default_call_when_followed(ctx, person) -> None:
             logger.info(
                 f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} @{person.username} followed bot"
             )
@@ -155,6 +127,8 @@ class Bot(Client):
                 "params": {"command": Param(required=False, default="None")},
             }
         }
+        self.doc_html = None  # deadlock for if html generated || stores html
+        self._call_when_followed = __default_call_when_followed
         self._default = __current_default
         self._not_all_required_params_specified = __not_included_params
         self.token = token
@@ -290,8 +264,11 @@ class Bot(Client):
                 output[i] = params[i].type_cast(output[i])
         return (True, output)
 
-    def create_docs(self) -> None:
+    def generate_doc_html(self) -> None:
         """automatically creates the documentation for the bot"""
+        if self.doc_html is not None:
+            return self.doc_html
+
         html = ORIGINAL_HTML.format(
             self.user.username,
             self.prefix,
@@ -344,25 +321,64 @@ class Bot(Client):
                     _param.type_cast.__name__,
                 )
 
-        @app.route("/")
-        def _() -> None:
-            return render_template("index.html", html=html)
+        return html
 
-    def run(self, auto_create_docs: bool = True, token: str = None) -> None:
-        """mainest runner code"""
+    def run(
+        self, token: str = None, auto_create_docs: bool = False, flask_app: Flask = None
+    ) -> None:
+        """main runner code, input a flask app and auto_create_docs if you want auto created docs"""
         if token is not None and not self.init_:
             super()
             super().__init__(token)
             self.init_ = True
 
-        @self.once("ready")
+        @self.on("ready")
         async def on_ready(client):
             logger.info(
                 f'{green}[FILE] BOT.py{end}\n{bold_green}[STARTING BOT]{end} Botting "{bold_blue}{client.user.username}{end}"'
             )
 
-        if auto_create_docs:
-            self.create_docs()
+        self.doc_html = self.generate_doc_html()
+
+        if auto_create_docs and flask_app is None:
+            flask_app = Flask(__name__)
+
+        if flask_app is not None:
+
+            if auto_create_docs:
+
+                @flask_app.route("/")
+                def _():
+                    return render_template("index.html", html=self.doc_html)
+
+            @flask_app.route("/<command>/<user>/<choice>/<rand_chars>")
+            def _parse_button_commands(command, user, choice, rand_chars):
+                global _started_buttons
+                if request.headers["X-Replit-User-Name"] == "":
+                    return render_template(
+                        "index.html",
+                        html='<center><div><script authed="location.reload()" src="https://auth.util.repl.co/script.js"></script></div></center>',
+                    )
+                if (
+                    command in _started_buttons
+                    and user in _started_buttons[command]
+                    and rand_chars in _started_buttons[command][user]
+                    and _started_buttons[command][user][rand_chars] is None
+                    and user == request.headers["X-Replit-User-Name"]
+                ):
+                    _started_buttons[command][user][rand_chars] = choice
+                    return render_template(
+                        "index.html",
+                        html="<center><h1>your request has been processed, you can close this tab</h1></center>",
+                    )
+                else:
+                    return render_template(
+                        "index.html",
+                        html="<center><h1>you cannot do this right now</h1></center>",
+                    )
+
+        else:
+            links.docs = None
 
         @self.on("notification")
         async def _run(notif_id, notif) -> None:
@@ -450,10 +466,10 @@ class Bot(Client):
                     )
                     await self._default(notif.comment)
 
-        if auto_create_docs:
+        if flask_app:
             Thread(
                 target=serve,
-                kwargs={"app": app, "host": "0.0.0.0", "port": 8080},
+                kwargs={"app": flask_app, "host": "0.0.0.0", "port": 8080},
                 daemon=True,
             ).start()
         loop = asyncio.get_event_loop()

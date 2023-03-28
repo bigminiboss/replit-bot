@@ -6,9 +6,15 @@ import os
 import asyncio
 from .AsyncClient import Client
 from .links import links
-from .html_default_templates import ORIGINAL_HTML, PARAM_BIO, HTML_LIST, BLOCKQUOTE
+from .html_default_templates import (
+    ORIGINAL_HTML,
+    PARAM_BIO,
+    HTML_LIST,
+    BLOCKQUOTE,
+    TEMPLATE,
+)
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List
-from flask import Flask, render_template, request
+from flask import Flask, render_template_string, request
 from waitress import serve
 from threading import Thread
 from time import sleep
@@ -332,16 +338,17 @@ class Bot(Client):
             super().__init__(token)
             self.init_ = True
 
-        @self.on("ready")
+        @self.once("ready")
         async def on_ready(client):
             logger.info(
                 f'{green}[FILE] BOT.py{end}\n{bold_green}[STARTING BOT]{end} Botting "{bold_blue}{client.user.username}{end}"'
             )
 
+        self.emit("ready", self)
         self.doc_html = self.generate_doc_html()
 
         if auto_create_docs and flask_app is None:
-            flask_app = Flask(__name__)
+            flask_app = Flask("replit_bot")
 
         if flask_app is not None:
 
@@ -349,14 +356,14 @@ class Bot(Client):
 
                 @flask_app.route("/")
                 def _():
-                    return render_template("index.html", html=self.doc_html)
+                    return render_template_string(TEMPLATE, html=self.doc_html)
 
             @flask_app.route("/<command>/<user>/<choice>/<rand_chars>")
             def _parse_button_commands(command, user, choice, rand_chars):
                 global _started_buttons
                 if request.headers["X-Replit-User-Name"] == "":
-                    return render_template(
-                        "index.html",
+                    return render_template_string(
+                        TEMPLATE,
                         html='<center><div><script authed="location.reload()" src="https://auth.util.repl.co/script.js"></script></div></center>',
                     )
                 if (
@@ -367,13 +374,13 @@ class Bot(Client):
                     and user == request.headers["X-Replit-User-Name"]
                 ):
                     _started_buttons[command][user][rand_chars] = choice
-                    return render_template(
-                        "index.html",
+                    return render_template_string(
+                        TEMPLATE,
                         html="<center><h1>your request has been processed, you can close this tab</h1></center>",
                     )
                 else:
-                    return render_template(
-                        "index.html",
+                    return render_template_string(
+                        TEMPLATE,
                         html="<center><h1>you cannot do this right now</h1></center>",
                     )
 

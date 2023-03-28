@@ -13,7 +13,7 @@ from threading import Thread
 from markdown import markdown
 from flask import Flask, render_template_string
 
-app = Flask("replit_bot")
+app = Flask(__name__)
 
 app.route("/docs")(
     lambda: render_template_string(

@@ -85,16 +85,16 @@ class Client(AsyncIOEventEmitter):
         }
         self.number_convert: List[str] = ["1st", "2nd", "3rd"]
         self.__reset_status_codes: List[int] = [429, 403, 520, 503, 502, 500]
-        self.posting_cache = Queue()
-        self.ratelimit = ratelimit
-        self.max_groups = 10
+        self.posting_cache: Queue = Queue()
+        self.ratelimit: int = ratelimit
+        self.max_groups: int = 10
         # self.limiter = aiolimiter.AsyncLimiter(self.ratelimit, 1)
-        self.sid = sid
+        self.sid: str = sid
 
-        __temp_headers = self.headers
+        __temp_headers: Dict[str, Any] = self.headers
         __temp_headers["Cookie"] = f"connect.sid={self.sid}"
 
-        self.session = ClientSession(headers=__temp_headers)
+        self.session: ClientSession = ClientSession(headers=__temp_headers)
 
         async def __temp_post_wrapper_cu():
             data = await self.gql("currentUser")

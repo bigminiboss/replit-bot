@@ -80,8 +80,6 @@ class Bot(Client):
         token: str = None,
         prefix: str = "/",
         bio: str = "",
-        allow_api: bool = False,
-        api_path: str = "/api",
     ) -> None:
         if token is not None:
             super(Client, self).__init__()
@@ -143,14 +141,6 @@ class Bot(Client):
         self.alias = {}
         self.listeners = {}
         self.threads_ = []
-        self._allow_api = allow_api
-        if self._allow_api:
-
-            @app.route(api_path, methods=["POST"])
-            async def _raw_api():
-                kwargs = {"vars": {}, "raw": True}
-                kwargs.update(request.json)
-                return await self.gql(kwargs["query"], kwargs["vars"], kwargs["raw"])
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
@@ -194,13 +184,13 @@ class Bot(Client):
 
         return wrapper
 
-    async def follower(self, func):
+    def follower(self, func):
         self._call_when_followed = func
 
-    async def default(self, func):
+    def default(self, func):
         self._default = func
 
-    async def fallback_param_not_included_case(self, func):
+    def fallback_param_not_included_case(self, func):
         self._not_all_required_params_specified = func
 
     async def parse_command(self, command: str):
@@ -241,11 +231,11 @@ class Bot(Client):
             output["options"][_current_command] = current.rstrip()
         return output
 
-    async def valid_command(self, resp: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+    async def valid_command(self, resp: str) -> Tuple[bool, Dict[str, Any]]:
         """validates command. Returns true if is valid `(True, parsed_json)` or false if not `(False, {'None': None})`"""
-        if resp == {} or resp["comment"] == None:
+        if resp is None:
             return (False, {"None": None})
-        parsed = self.parse_command(resp["comment"]["body"])
+        parsed = await self.parse_command(resp)
         if (
             parsed == {}
             or parsed["ping statement"].strip("@") != self.user.username.lower()
@@ -408,10 +398,17 @@ class Bot(Client):
                 for i in dir(self):
                     if not i.startswith("__") and not i.endswith("__"):
                         setattr(notif.comment, i, getattr(self, i))
-                parsed_json = await self.parse_command(notif.comment.body)
-                if "command" in parsed_json and (
-                    parsed_json["command"] in self.commands
-                    or parsed_json["command"] in self.alias
+                valid_first, parsed_json = await self.valid_command(notif.comment.body)
+                if not valid_first:
+                    return
+
+                if (
+                    "command" in parsed_json
+                    and (
+                        parsed_json["command"] in self.commands
+                        or parsed_json["command"] in self.alias
+                    )
+                    and valid_first
                 ):
                     c = parsed_json["command"]
                     if parsed_json["command"] in self.alias:
@@ -419,7 +416,7 @@ class Bot(Client):
                     valid, kwargs = await self.get_kwargs(
                         self.commands[c], parsed_json["options"]
                     )
-                    if valid:
+                    if valid and valid_first:
                         notif.comment.button = Button(notif.comment.author.username, c)
 
                         logger.info(
@@ -436,16 +433,18 @@ class Bot(Client):
                             await self.commands[c]["call"](notif.comment, **kwargs)
                         else:
                             await self.commands[c]["call"](notif.comment, **kwargs)
-                    else:
+                    elif valid_first:
                         await self._not_all_required_params_specified(notif.comment)
-                elif "command" in parsed_json and (
-                    parsed_json["command"] in self.listeners
+                elif (
+                    "command" in parsed_json
+                    and (parsed_json["command"] in self.listeners)
+                    and valid_first
                 ):
                     c = parsed_json["command"]
                     valid, kwargs = await self.get_kwargs(
                         self.listeners[c], parsed_json["options"]
                     )
-                    if valid:
+                    if valid and valid_first:
                         notif.comment.button = Button(notif.comment.user.username, c)
                         logger.info(
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
@@ -462,12 +461,12 @@ class Bot(Client):
                                 await command[c]["call"](notif.comment, **kwargs)
                             else:
                                 await command[c]["call"](notif.comment, **kwargs)
-                    else:
+                    elif valid_first:
                         logger.info(
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                         )
                         await self._not_all_required_params_specified(notif.comment)
-                elif "command" in parsed_json:
+                elif "command" in parsed_json and valid_first:
                     logger.info(
                         f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                     )

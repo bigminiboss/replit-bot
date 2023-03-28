@@ -276,7 +276,7 @@ class Client(AsyncIOEventEmitter):
                 _ = list(map(lambda x: x["data"], list(res["data"])))
                 return _
             except:
-                if "data" in res["data"]:
+                if "data" in res and "data" in res["data"]:
                     return res["data"]["data"]
                 else:
                     if "data" in res:

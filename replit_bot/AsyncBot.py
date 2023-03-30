@@ -3,6 +3,8 @@
 import urllib.parse
 import logging
 import os
+import re
+import math
 import asyncio
 from .AsyncClient import Client
 from .links import links
@@ -320,7 +322,11 @@ class Bot(Client):
         return html
 
     def run(
-        self, token: str = None, auto_create_docs: bool = False, flask_app: Flask = None
+        self,
+        token: str = None,
+        auto_create_docs: bool = False,
+        flask_app: Flask = None,
+        daemon: bool = True,
     ) -> None:
         """main runner code, input a flask app and auto_create_docs if you want auto created docs"""
         if token is not None and not self.init_:
@@ -347,6 +353,9 @@ class Bot(Client):
                 @flask_app.route("/")
                 def _():
                     return render_template_string(TEMPLATE, html=self.doc_html)
+
+            else:
+                links.docs = None
 
             @flask_app.route("/<command>/<user>/<choice>/<rand_chars>")
             def _parse_button_commands(command, user, choice, rand_chars):
@@ -471,12 +480,100 @@ class Bot(Client):
                         f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                     )
                     await self._default(notif.comment)
+            elif __typename == "AnnotationNotification":
+                super_self = self
 
-        if flask_app:
+                class CurrentThread:
+                    def __init__(self, data) -> None:
+                        self.id = data["id"]
+                        self.anchor_id = data["anchor"]["id"]
+
+                        async def __temp_wrapper():
+                            return await super_self.users.fetch(
+                                data["user"]["username"]
+                            )
+
+                        loop = asyncio.get_event_loop()
+                        self.user = loop.create_task(__temp_wrapper())
+                        self.body = data["content"]["text"]
+
+                res = await self.gql(
+                    "query Repl($url: String, $id: String) {repl(url: $url, id: $id) {...on Repl {id annotationAnchors {id isGeneral messages {id seen anchor {id} user {username bio} content {...on TextMessageContentType {text}}}}}}}",
+                    {"url": notif.url},
+                )
+                repl_annotations = res["repl"]
+                if repl_annotations is None:
+                    return
+                anchor = list(
+                    filter(
+                        lambda x: x["isGeneral"], repl_annotations["annotationAnchors"]
+                    )
+                )[0]
+                if not anchor:
+                    return
+                messages = list(map(lambda x: CurrentThread(x), anchor["messages"]))
+                message = list(
+                    filter(
+                        lambda x: x.body.startswith("@" + self.user.username), messages
+                    )
+                )[0]
+                await self.gql(
+                    "mutation MarkMessagesSeen($replId: String!, $threadId: String) {markMessagesAsSeen(replId: $replId, threadId: $threadId) {...on AnnotationMessageList {messages {id anchor {id}}} ...on UserError {message}}}",
+                    {"replId": repl_annotations["id"], "anchorId": anchor["id"]},
+                )
+
+                class CurrentCtx:
+                    def __init__(self):
+                        self.repl_id = repl_annotations["id"]
+                        self.anchor_id = anchor["id"]
+
+                    async def generate_chat_id(self) -> str:
+                        def padString(x, add, current):
+                            while len(current) < x:
+                                current = add + current
+                            return current
+
+                        def wrapper(x):
+                            print(
+                                x,
+                                padString(
+                                    x, 0, str(math.floor(16**x * math.random()))
+                                ),
+                            )
+                            return padString(
+                                x, 0, str(math.floor(16**x * math.random()))
+                            )
+
+                        return re.sub(r"\d+/g", wrapper, "8-4-4-4-12")
+
+                    async def reply(self, body) -> None:
+                        return await self.gql(
+                            "mutation ThreadComment($replId: String!, $anchorId: String!, $annotationMessage: AnnotationMessageInput!, $highlight: AnnotationHighlightInput) {createAnnotationMessage(replId: $replId, anchorId: $anchorId, annotationMessage: $annotationMessage, highlight: $highlight) {...on AnnotationAnchor {id} ...on UserError {message}}}",
+                            vars={
+                                "replId": self.repl_id,
+                                "anchorId": self.anchor_id,
+                                "annotationMessage": {
+                                    "id": await self.generate_chat_id(),
+                                    "text": body,
+                                },
+                            },
+                        )
+
+                ctx = CurrentCtx()
+                for i in dir(self):
+                    if not i.startswith("__") and not i.endswith("__"):
+                        setattr(ctx, i, getattr(self, i))
+                for i in dir(message):
+                    if not i.startswith("__") and not i.endswith("__"):
+                        setattr(ctx, i, getattr(message, i))
+                print(await ctx.generate_chat_id())
+                print(await ctx.reply("Hello"))
+
+        if flask_app is not None:
             Thread(
                 target=serve,
                 kwargs={"app": flask_app, "host": "0.0.0.0", "port": 8080},
-                daemon=True,
+                daemon=daemon,
             ).start()
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.user.notifications.startEvents())

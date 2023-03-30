@@ -183,12 +183,6 @@ class Client(AsyncIOEventEmitter):
     async def login(self, username: str, password: str) -> str:
         return await self.gql("login", {"username": username, "password": password})
 
-    async def graphql(
-        self, sid: str, query: str, vars: Dict[str, Any] = {}
-    ) -> Dict[str, Any]:
-        """specify sid for post"""
-        return await self.post(query, vars, connection=sid)
-
     async def post(
         self,
         query: str,

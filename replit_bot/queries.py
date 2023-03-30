@@ -61,6 +61,110 @@ q = {
 					tagline
 				}
 			}
+			sidebarClosed
+			hasProfileImage
+			image
+			coverImage {
+				url
+		 		offsetY
+			}
+			socialSignup
+			googleAuth: auth(provider: GOOGLE) {
+				accessToken
+			}
+			githubAuth: auth(provider: GITHUB) {
+				accessToken
+			}
+			facebookAuth: auth(provider: FACEBOOK) {
+				accessToken
+			}
+			gitHubInfo {
+		 		installations {
+					id
+					type
+					avatarUrl
+					name
+				}
+		 		userInfo {
+					name
+					email
+					avatarUrl
+				}
+			}
+			usernameRepl {
+				id
+		 		title
+				url
+			}
+			daysSinceSignup
+			clui
+			editorPreferences {
+				isLayoutStacked
+		 		theme
+				fontSize
+		 		indentIsSpaces
+				indentSize
+		 		keyboardHandler
+				wrapping
+				accessibleTerminal
+		 		extraDelight
+			}
+		}}""",
+    "currentUserPrevious": """query {currentUser {
+			id
+			email
+			username
+			firstName
+			lastName
+			locale
+			emailNotifications
+			isVerified
+			displayName
+			fullName
+			url
+			bio
+			socials {
+				id
+		 		url
+				type
+			}
+			hasRepl
+			hasPrivacyRole
+			roles {
+				id
+		 		key
+				name
+		 		tagline
+			}
+			isLoggedIn
+			isSubscribed
+			timeCreated
+			warnings {
+				id
+		 		reason
+				moderator {
+		 			username
+				}
+		 		timeCreated
+			}
+			followerCount
+			followCount
+			isBannedFromBoards
+			isHacker
+			cannySSOToken
+			canUpdateEmail: canUpdate(column: EMAIL)
+			canUpdateUsername: canUpdate(column: USERNAME)
+			state {
+				id
+		 		skillLevel
+				interestedIn
+		 		languagesInterestedIn {
+					id
+					displayName
+					icon
+					tagline
+				}
+			}
 			device {
 				isMobile
 		 		isMac

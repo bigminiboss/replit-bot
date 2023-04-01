@@ -25,6 +25,7 @@ from .exceptions import NamesMustBeAlphanumeric, MustBeRunOnReplitForButtons
 from .utils._uuid import random_characters
 from .post_ql import post
 from .colors import green, blue, purple, red, end, bold_green, bold_blue
+import uuid
 
 _started_buttons = {}
 # line_sep = "-" * os.get_terminal_size().columns
@@ -487,18 +488,19 @@ class Bot(Client):
                     def __init__(self, data) -> None:
                         self.id = data["id"]
                         self.anchor_id = data["anchor"]["id"]
+                        self.user = None
 
                         async def __temp_wrapper():
-                            return await super_self.users.fetch(
+                            self.user = await super_self.users.fetch(
                                 data["user"]["username"]
                             )
 
                         loop = asyncio.get_event_loop()
-                        self.user = loop.create_task(__temp_wrapper())
+                        loop.create_task(__temp_wrapper())
                         self.body = data["content"]["text"]
 
                 res = await self.gql(
-                    "query Repl($url: String, $id: String) {repl(url: $url, id: $id) {...on Repl {id annotationAnchors {id isGeneral messages {id seen anchor {id} user {username bio} content {...on TextMessageContentType {text}}}}}}}",
+                    "getReplAnnotations",
                     {"url": notif.url},
                 )
                 repl_annotations = res["repl"]
@@ -518,7 +520,7 @@ class Bot(Client):
                     )
                 )[0]
                 await self.gql(
-                    "mutation MarkMessagesSeen($replId: String!, $threadId: String) {markMessagesAsSeen(replId: $replId, threadId: $threadId) {...on AnnotationMessageList {messages {id anchor {id}}} ...on UserError {message}}}",
+                    "markMessageAsSeen",
                     {"replId": repl_annotations["id"], "anchorId": anchor["id"]},
                 )
 
@@ -527,33 +529,14 @@ class Bot(Client):
                         self.repl_id = repl_annotations["id"]
                         self.anchor_id = anchor["id"]
 
-                    async def generate_chat_id(self) -> str:
-                        def padString(x, add, current):
-                            while len(current) < x:
-                                current = add + current
-                            return current
-
-                        def wrapper(x):
-                            print(
-                                x,
-                                padString(
-                                    x, 0, str(math.floor(16**x * math.random()))
-                                ),
-                            )
-                            return padString(
-                                x, 0, str(math.floor(16**x * math.random()))
-                            )
-
-                        return re.sub(r"\d+/g", wrapper, "8-4-4-4-12")
-
                     async def reply(self, body) -> None:
                         return await self.gql(
-                            "mutation ThreadComment($replId: String!, $anchorId: String!, $annotationMessage: AnnotationMessageInput!, $highlight: AnnotationHighlightInput) {createAnnotationMessage(replId: $replId, anchorId: $anchorId, annotationMessage: $annotationMessage, highlight: $highlight) {...on AnnotationAnchor {id} ...on UserError {message}}}",
+                            "createChatMessage",
                             vars={
                                 "replId": self.repl_id,
                                 "anchorId": self.anchor_id,
                                 "annotationMessage": {
-                                    "id": await self.generate_chat_id(),
+                                    "id": str(uuid.uuid4()),
                                     "text": body,
                                 },
                             },
@@ -566,8 +549,82 @@ class Bot(Client):
                 for i in dir(message):
                     if not i.startswith("__") and not i.endswith("__"):
                         setattr(ctx, i, getattr(message, i))
-                print(await ctx.generate_chat_id())
-                print(await ctx.reply("Hello"))
+
+                ctx.author = ctx.user
+                ctx.author.mention = "@" + ctx.user.username
+                valid_first, parsed_json = await self.valid_command(ctx.body)
+                if not valid_first:
+                    return
+
+                if (
+                    "command" in parsed_json
+                    and (
+                        parsed_json["command"] in self.commands
+                        or parsed_json["command"] in self.alias
+                    )
+                    and valid_first
+                ):
+                    c = parsed_json["command"]
+                    if parsed_json["command"] in self.alias:
+                        c = self.alias[c]
+                    valid, kwargs = await self.get_kwargs(
+                        self.commands[c], parsed_json["options"]
+                    )
+                    if valid and valid_first:
+                        ctx.button = Button(ctx.author.username, c)
+
+                        logger.info(
+                            f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
+                        )
+                        if self.commands[c]["thread"]:
+                            # t = Thread(
+                            #     target=self.commands[c]["call"],
+                            #     args=(notif.comment,),
+                            #     kwargs=kwargs,
+                            # )
+                            # t.start()
+                            # self.threads_.append(t)
+                            await self.commands[c]["call"](ctx, **kwargs)
+                        else:
+                            await self.commands[c]["call"](ctx, **kwargs)
+                    elif valid_first:
+                        await self._not_all_required_params_specified(ctx)
+                elif (
+                    "command" in parsed_json
+                    and (parsed_json["command"] in self.listeners)
+                    and valid_first
+                ):
+                    c = parsed_json["command"]
+                    valid, kwargs = await self.get_kwargs(
+                        self.listeners[c], parsed_json["options"]
+                    )
+                    if valid and valid_first:
+                        ctx.button = Button(ctx.user.username, c)
+                        logger.info(
+                            f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
+                        )
+                        for command in self.listeners[c]:
+                            if command[c]["thread"]:
+                                # t = Thread(
+                                #     target=command[c]["call"],
+                                #     args=(notif.comment,),
+                                #     kwargs=kwargs,
+                                # )
+                                # t.start()
+                                # self.threads_.append(t)
+                                await command[c]["call"](ctx, **kwargs)
+                            else:
+                                await command[c]["call"](ctx, **kwargs)
+                    elif valid_first:
+                        logger.info(
+                            f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
+                        )
+                        await self._not_all_required_params_specified(ctx)
+                elif "command" in parsed_json and valid_first:
+                    logger.info(
+                        f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
+                    )
+                    await self._default(ctx)
 
         if flask_app is not None:
             Thread(

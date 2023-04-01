@@ -36,9 +36,10 @@ class module:
 
 
 class Track(AsyncIOEventEmitter):
-    def __init__(self, func: Function[..., Any], ms: int) -> None:
+    def __init__(self, func: Function[..., Any], ms: int, client) -> None:
         super()
         super().__init__()
+        self.c = client
         self.f = func
         self.ms = ms
         self.running = False
@@ -56,6 +57,7 @@ class Track(AsyncIOEventEmitter):
                 if n != last:
                     self.emit("update", n)
                 self.last = n
+                # await self.c.gql("updatePresence")
                 await asyncio.sleep(self.ms)
 
         await call_func()
@@ -594,14 +596,14 @@ class PostManager:
 
 
 class NotificationManager:
-    def __init__(self, client: Client, seconds: int = 30) -> None:
+    def __init__(self, client: Client, seconds: int = 5) -> None:
         self.c = client
         self.cache = {}
 
         async def __wrapper():
             return await self.c.user.notifications.fetch_all()
 
-        self.track = Track(__wrapper, seconds)
+        self.track = Track(__wrapper, seconds, self.c)
 
         @self.track.on("update")
         async def resolve_notifications(notifs) -> None:

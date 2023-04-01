@@ -488,6 +488,7 @@ class Bot(Client):
                     def __init__(self, data) -> None:
                         self.id = data["id"]
                         self.anchor_id = data["anchor"]["id"]
+                        self.seen = data["seen"]
                         self.user = None
 
                         async def __temp_wrapper():
@@ -516,9 +517,12 @@ class Bot(Client):
                 messages = list(map(lambda x: CurrentThread(x), anchor["messages"]))
                 message = list(
                     filter(
-                        lambda x: x.body.startswith("@" + self.user.username), messages
+                        lambda x: x.body.startswith("@" + self.user.username)
+                        and not x.seen,
+                        messages,
                     )
-                )[0]
+                )
+                message = message[0]
                 await self.gql(
                     "markMessageAsSeen",
                     {"replId": repl_annotations["id"], "anchorId": anchor["id"]},

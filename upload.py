@@ -1,3 +1,3 @@
 import os
 
-os.system("poetry build;poetry publish")
+os.system("poetry publish --build --password $PYPI_PASSWORD --username $PYPI_USERNAME")

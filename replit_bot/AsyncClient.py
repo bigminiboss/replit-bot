@@ -896,6 +896,9 @@ class User:
         await self.update(res["setBlocking"])
         return self.isBlockedBycurrentUser
 
+    def __str__(self):
+        return self.username
+
 
 class CurrentUser(User):
     def __init__(self, client):
@@ -1405,3 +1408,9 @@ class Comment:
             if comment.id != None:
                 self.c.comments.cache[comment.id] = comment
         return comment
+
+    async def edit(self, body: str):
+        """edit comment"""
+        await self.c.gql("editComment", {"input": {"id": self.id, "body": body}})
+        self.body = body
+        return self

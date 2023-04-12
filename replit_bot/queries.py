@@ -354,6 +354,68 @@ fragment PostsFeedNavTag on Tag {
     "createChatMessage": "mutation ThreadComment($replId: String!, $anchorId: String!, $annotationMessage: AnnotationMessageInput!, $highlight: AnnotationHighlightInput) {createAnnotationMessage(replId: $replId, anchorId: $anchorId, annotationMessage: $annotationMessage, highlight: $highlight) {...on AnnotationAnchor {id} ...on UserError {message}}}",
     "markMessageAsSeen": "mutation MarkMessagesSeen($replId: String!, $threadId: String) {markMessagesAsSeen(replId: $replId, threadId: $threadId) {...on AnnotationMessageList {messages {id anchor {id}}} ...on UserError {message}}}",
     "getReplAnnotations": "query Repl($url: String, $id: String) {repl(url: $url, id: $id) {...on Repl {id annotationAnchors {id isGeneral messages {id seen anchor {id} user {username bio} content {...on TextMessageContentType {text}}}}}}}",
+    "chatInit": """mutation CreateAnnotationAnchor($annotationAnchor: AnnotationAnchorInput!, $annotationMessage: AnnotationMessageInput, $highlight: AnnotationHighlightInput) {
+  createAnnotationAnchor(
+    annotationAnchor: $annotationAnchor
+    annotationMessage: $annotationMessage
+    highlight: $highlight
+  ) {
+    ... on UserError {
+      message
+      __typename
+    }
+    ... on AnnotationAnchor {
+      id
+      path
+      isResolved
+      isGeneral
+      messages {
+        id
+        user {
+          id
+          username
+        }
+        anchor {
+          id
+        }
+        timeCreated
+        content {
+          ... on TextMessageContentType {
+            text
+          }
+          ... on PreviewMessageContentType {
+            preview
+          }
+          ... on StatusMessageContentType {
+            status
+          }
+          __typename
+        }
+      }
+    }
+    __typename
+  }
+}""",
+    "getMultiplayerRepls": """query ReplsDashboardReplFolderList($path: String!, $starred: Boolean, $after: String) {
+  currentUser {
+    replFolderByPath(path: $path) {
+      repls(starred: $starred, after: $after) {
+        items {
+          id
+          ...ReplsDashboardReplItemRepl
+        }
+        pageInfo {
+          nextCursor
+        }
+      }
+    }
+  }
+}
+
+fragment ReplsDashboardReplItemRepl on Repl {
+  id
+}""",
+    "editComment": "mutation ReplViewCommentsUpdateReplComment($input: UpdateReplCommentInput!) {\n  updateReplComment(input: $input) {\n    ... on ReplComment {\n      id\n      body\n      __typename\n    }\n    ... on UserError {\n      message\n      __typename\n    }\n    __typename\n  }\n}\n",
 }
 
 """

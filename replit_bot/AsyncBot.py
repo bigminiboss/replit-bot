@@ -18,6 +18,9 @@ from .html_default_templates import (
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List
 from flask import Flask, render_template_string, request
 from waitress import serve
+
+# from hypercorn.config import Config
+# from hypercorn.asyncio import serve
 from threading import Thread
 from time import sleep
 from .param import Param
@@ -125,6 +128,89 @@ class Bot(Client):
                 f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} @{person.username} followed bot"
             )
 
+        async def __default_when_invited_to_repl(ctx) -> None:
+            return await ctx.reply(
+                "Hello @everyone ! Thanks for inviting me to this repl"
+            )
+
+        async def __wrapper_fetch_multiplayers() -> List[Any]:
+            cursor = None
+            first = True
+            while first or cursor is not None:
+                first = False
+                x = await self.gql(
+                    """getMultiplayerRepls""", {"path": "multiplayer", "after": cursor}
+                )
+                repls = x["currentUser"]["replFolderByPath"]["repls"]["items"]
+                cursor = x["currentUser"]["replFolderByPath"]["repls"]["pageInfo"][
+                    "nextCursor"
+                ]
+                for i in repls:
+                    repl = await self.gql("repl", {"id": i["id"]})
+                    url = repl["repl"]["url"]
+                    res = await self.gql("getReplAnnotations", {"id": i["id"]})
+                    repl_annotations = res["repl"]
+                    if repl_annotations is None:
+                        return
+                    anchor = list(
+                        filter(
+                            lambda x: x["isGeneral"],
+                            repl_annotations["annotationAnchors"],
+                        )
+                    )
+                    if len(anchor) > 0:
+                        anchor = anchor[0]
+                    else:
+                        anchor = {"id": None}
+                    super_self = self
+
+                    class CurrentCtx:
+                        def __init__(self):
+                            self.notif_type = "MultiplayerInvitedNotification"
+                            self.repl_url = url
+                            self.repl_id = repl_annotations["id"]
+                            self.anchor_id = anchor["id"]
+                            self.super_self = super_self
+
+                        async def reply(self, body) -> None:
+                            if self.anchor_id is not None:
+                                return await self.super_self.gql(
+                                    "createChatMessage",
+                                    vars={
+                                        "replId": self.repl_id,
+                                        "anchorId": self.anchor_id,
+                                        "annotationMessage": {
+                                            "id": str(uuid.uuid4()),
+                                            "text": body,
+                                        },
+                                    },
+                                )
+                            else:
+
+                                self.anchor_id = ""
+                                await self.super_self.gql(
+                                    "chatInit",
+                                    {
+                                        "annotationAnchor": {
+                                            "id": str(uuid.uuid4()),
+                                            "replId": self.repl_id,
+                                            "isGeneral": True,
+                                            "isResolved": False,
+                                        },
+                                        "annotationMessage": {
+                                            "id": str(uuid.uuid4()),
+                                            "text": body,
+                                            "mentions": [],
+                                        },
+                                    },
+                                )
+
+                    ctx = CurrentCtx()
+                    for i in dir(self):
+                        if not i.startswith("__") and not i.endswith("__"):
+                            setattr(ctx, i, getattr(self, i))
+                    self.multiplayer_repls.append(ctx)
+
         self.commands = {
             "help": {
                 "call": help_function,
@@ -138,12 +224,15 @@ class Bot(Client):
         self._call_when_followed = __default_call_when_followed
         self._default = __current_default
         self._not_all_required_params_specified = __not_included_params
+        self._when_invited_to_repl = __default_when_invited_to_repl
         self.token = token
         self.bio = bio
         self.prefix = prefix
         self.alias = {}
         self.listeners = {}
         self.threads_ = []
+        self.multiplayer_repls = []
+        asyncio.get_event_loop().run_until_complete(__wrapper_fetch_multiplayers())
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
@@ -195,6 +284,9 @@ class Bot(Client):
 
     def fallback_param_not_included_case(self, func):
         self._not_all_required_params_specified = func
+
+    def when_invited_to_repl(self, func):
+        self._when_invited_to_repl = func
 
     async def parse_command(self, command: str):
         """parses command
@@ -361,6 +453,8 @@ class Bot(Client):
             @flask_app.route("/<command>/<user>/<choice>/<rand_chars>")
             def _parse_button_commands(command, user, choice, rand_chars):
                 global _started_buttons
+                if rand_chars[-1] == ")":
+                    rand_chars = rand_chars[:-1]
                 if request.headers["X-Replit-User-Name"] == "":
                     return render_template_string(
                         TEMPLATE,
@@ -392,7 +486,6 @@ class Bot(Client):
             """main runner code"""
             # MentionedInPost, MentionedInComment, RepliedToComment, RepliedToPost, AnswerAccepted, MultiplayerJoinedEmail, MultiplayerJoinedLink, MultiplayerInvited, MultiplayerOverlimit, Warning, TeamInvite, TeamOrganizationInvite, Basic, TeamTemplateSubmitted, TeamTemplateReviewedStatus, Annotation, EditRequestCreated, EditRequestAccepted, ReplCommentCreated, ReplCommentReplyCreated, ReplCommentMention, Thread, NewFollower
             await self.gql("markOneAsRead", {"id": notif_id})
-
             __typename = getattr(notif, "__typename")
             if __typename == "WarningNotification":
                 logger.critical(
@@ -400,7 +493,15 @@ class Bot(Client):
                 )
             elif __typename == "NewFollowerNotification":
                 await self._call_when_followed(self, notif.creator)
-            elif getattr(notif, "comment", False):
+            elif (
+                __typename == "ReplCommentMentionNotification"
+                or __typename == "MentionedInPost"
+            ) and getattr(notif, "comment", False):
+                if notif.comment.parentComment is not None:
+                    notif.comment.thread = notif.comment.parentComment.comments
+                else:
+                    notif.comment.thread = notif.comment.comments
+                notif.comment.notif_type = __typename
                 notif.comment.author = notif.comment.user
                 notif.comment.author.mention = "@" + notif.comment.author.username
                 notif.comment.Image = lambda url, caption="": f"![{caption}]({url})"
@@ -530,6 +631,8 @@ class Bot(Client):
 
                 class CurrentCtx:
                     def __init__(self):
+                        self.thread = messages
+                        self.notif_type = "AnnotationNotification"
                         self.repl_id = repl_annotations["id"]
                         self.anchor_id = anchor["id"]
 
@@ -629,6 +732,100 @@ class Bot(Client):
                         f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                     )
                     await self._default(ctx)
+            elif __typename == "MultiplayerInvitedNotification":
+                super_self = self
+                url = notif.__dict__["url"]
+                res = await self.gql("getReplAnnotations", {"url": url})
+                repl_annotations = res["repl"]
+                if repl_annotations is None:
+                    return
+                anchor = list(
+                    filter(
+                        lambda x: x["isGeneral"], repl_annotations["annotationAnchors"]
+                    )
+                )
+                if len(anchor) > 0:
+                    anchor = anchor[0]
+                else:
+                    anchor = {"id": None}
+
+                class CurrentThread:
+                    def __init__(self, data) -> None:
+                        self.id = data["id"]
+                        self.anchor_id = data["anchor"]["id"]
+                        self.seen = data["seen"]
+                        self.user = None
+
+                        async def __temp_wrapper():
+                            self.user = await super_self.users.fetch(
+                                data["user"]["username"]
+                            )
+
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(__temp_wrapper())
+                        self.body = data["content"]["text"]
+
+                messages = list(map(lambda x: CurrentThread(x), anchor["messages"]))
+                message = list(
+                    filter(
+                        lambda x: x.body.startswith("@" + self.user.username)
+                        and not x.seen,
+                        messages,
+                    )
+                )
+                super_self = self
+
+                class CurrentCtx:
+                    def __init__(self):
+                        self.thread = messages
+                        self.notif_type = "MultiplayerInvitedNotification"
+                        self.repl_url = url
+                        self.repl_id = repl_annotations["id"]
+                        self.anchor_id = anchor["id"]
+                        self.super_self = super_self
+
+                    async def reply(self, body) -> None:
+                        if self.anchor_id is not None:
+                            return await self.super_self.gql(
+                                "createChatMessage",
+                                vars={
+                                    "replId": self.repl_id,
+                                    "anchorId": self.anchor_id,
+                                    "annotationMessage": {
+                                        "id": str(uuid.uuid4()),
+                                        "text": body,
+                                    },
+                                },
+                            )
+                        else:
+
+                            self.anchor_id = ""
+                            await self.super_self.gql(
+                                "chatInit",
+                                {
+                                    "annotationAnchor": {
+                                        "id": str(uuid.uuid4()),
+                                        "replId": self.repl_id,
+                                        "isGeneral": True,
+                                        "isResolved": False,
+                                    },
+                                    "annotationMessage": {
+                                        "id": str(uuid.uuid4()),
+                                        "text": body,
+                                        "mentions": [],
+                                    },
+                                },
+                            )
+
+                ctx = CurrentCtx()
+                for i in dir(self):
+                    if not i.startswith("__") and not i.endswith("__"):
+                        setattr(ctx, i, getattr(self, i))
+                logger.info(
+                    f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} got invited to repl {url}"
+                )
+                self.multiplayer_repls.append(ctx)
+                await self._when_invited_to_repl(ctx)
 
         if flask_app is not None:
             Thread(
@@ -636,5 +833,6 @@ class Bot(Client):
                 kwargs={"app": flask_app, "host": "0.0.0.0", "port": 8080},
                 daemon=daemon,
             ).start()
+
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.user.notifications.startEvents())

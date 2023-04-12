@@ -11,27 +11,16 @@ from replit_bot.AsyncBot import Bot
 from replit_bot import Param, __license__, __version__
 from threading import Thread
 from markdown import markdown
-from flask import Flask, render_template_string
+from flask import Flask
 
 app = Flask(__name__)
-
-app.route("/docs")(
-    lambda: render_template_string(
-        open("replit_bot/templates/index.html").read(),
-        html=markdown(open("README.md").read(), extensions=["fenced_code"]),
-    )
-)
-
 bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
-
-times = []
 
 
 @bot.command("enjoy-pancakes", alias=["enjoy"])
 async def enjoy(ctx):
     await ctx.reply(
-        f"hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
-        mention=True,
+        f"{ctx.author.mention} hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
     )
     await ctx.reply(
         "You traitor" if await ctx.button.get_choice() == "no" else "yay! we're friends"

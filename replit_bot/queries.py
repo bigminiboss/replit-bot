@@ -416,6 +416,7 @@ fragment ReplsDashboardReplItemRepl on Repl {
   id
 }""",
     "editComment": "mutation ReplViewCommentsUpdateReplComment($input: UpdateReplCommentInput!) {\n  updateReplComment(input: $input) {\n    ... on ReplComment {\n      id\n      body\n      __typename\n    }\n    ... on UserError {\n      message\n      __typename\n    }\n    __typename\n  }\n}\n",
+    "lastEditedRepls": "query HomeRecentRepls($count: Int!) {\n  ownRecentRepls: recentRepls(count: $count, filter: own) {\n    id\n    ...RecentRepl\n    __typename\n  }\n  multiplayerRecentRepls: recentRepls(count: $count, filter: multiplayer) {\n    id\n    ...RecentRepl\n    __typename\n  }\n  currentUser {\n    id\n    username\n    __typename\n  }\n}\n\nfragment RecentRepl on Repl {\n  id\n  title\n  iconUrl\n  ...ReplLinkRepl\n  owner {\n    ... on User {\n      id\n      ...RecentReplUser\n      __typename\n    }\n    ... on Team {\n      id\n      ...RecentReplTeam\n      __typename\n    }\n    __typename\n  }\n  __typename\n}\n\nfragment ReplLinkRepl on Repl {\n  id\n  url\n  nextPagePathname\n  __typename\n}\n\nfragment RecentReplUser on User {\n  id\n  username\n  __typename\n}\n\nfragment RecentReplTeam on Team {\n  id\n  username\n  __typename\n}\n",
 }
 
 """

@@ -17,6 +17,30 @@ app = Flask(__name__)
 bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
 
 
+@bot.command("milo-cat")
+async def milo_cat(ctx):
+    count = {"a": 0, "b": 0}
+    questions = [
+        {"name": "do you like pancakes", "a": "no", "b": "yes"},
+        {"name": "do you like waffles", "a": "yes", "b": "no"},
+        {"name": "do you like eggs", "a": "yes", "b": "no"},
+        {"name": "are pancakes better than waffles?", "a": "no", "b": "yes"},
+    ]
+    i = questions[0]
+    x = await ctx.reply(
+        f"{i['name']}\n\n{ctx.button.a} ({i['a']})\n\n{ctx.button.b} ({i['b']})"
+    )
+    count[await ctx.button.get_choice()] += 1
+    for i in questions[1:]:
+        await x.edit(
+            f"{i['name']}\n\n{ctx.button.a} ({i['a']})\n\n{ctx.button.b} ({i['b']})"
+        )
+        count[await ctx.button.get_choice()] += 1
+
+    most = max(count, key=count.get)
+    await x.edit("You traitor" if most == "a" else "yay! we're friends")
+
+
 @bot.command("enjoy-pancakes", alias=["enjoy"])
 async def enjoy(ctx):
     await ctx.reply(

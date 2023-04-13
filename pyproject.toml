@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "replit-bot"
-version = "4.2.4"
+version = "4.2.5"
 description = "make discord.py like bots on replit and/or do replapi-it style replit interactions"
 authors = ["bigminboss <you@example.com>"]
 
@@ -23,8 +23,6 @@ pyee = "^9.0.4"
 # [tool.poetry.group.docs.dependencies]
 Flask = "^2.2.0"
 waitress = "^2.1.2"
-quart="^0.18.4"
-hypercorn="^0.14.3"
 
 [tool.poetry.dev-dependencies]
 debugpy = "^1.6.2"

@@ -44,7 +44,6 @@ def _parse_button_commands(command, user, choice, rand_chars):
         command in _started_buttons
         and user in _started_buttons[command]
         and rand_chars in _started_buttons[command][user]
-        and _started_buttons[command][user][rand_chars] is None
         and user == request.headers["X-Replit-User-Name"]
     ):
         _started_buttons[command][user][rand_chars] = choice

@@ -15,10 +15,3 @@ HTML_LIST = """<li>{}</li>
 PARAM_BIO = """<center><h2>{}{}</h2></center>{}"""
 
 BLOCKQUOTE = """<blockquote>{}</blockquote>"""
-
-TEMPLATE = """<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/dark.css">
-
-{{html|safe}}
-
-<center><h5>made with ❤️ by <a href="https://replit.com/@bigminiboss">@bigminiboss</a> on replit && webpage powered by <a href="https://watercss.kognise.dev/">water.css</a></h5></center>
-<center><h6>fork <a href="https://replit.com/@bigminiboss/replit-bot">me</a> on replit</h6></center>"""

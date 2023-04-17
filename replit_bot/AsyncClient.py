@@ -18,7 +18,6 @@ from .exceptions import InvalidSid
 import requests
 import json
 import asyncio
-import uvloop
 
 # import aiolimiter
 import base64
@@ -37,10 +36,9 @@ class module:
 
 
 class Track(AsyncIOEventEmitter):
-    def __init__(self, func: Function[..., Any], ms: int, client) -> None:
+    def __init__(self, func: Function[..., Any], ms: int) -> None:
         super()
         super().__init__()
-        self.c = client
         self.f = func
         self.ms = ms
         self.running = False
@@ -58,7 +56,6 @@ class Track(AsyncIOEventEmitter):
                 if n != last:
                     self.emit("update", n)
                 self.last = n
-                # await self.c.gql("updatePresence")
                 await asyncio.sleep(self.ms)
 
         await call_func()
@@ -72,7 +69,6 @@ class Client(AsyncIOEventEmitter):
     def __init__(self, sid: str, ratelimit: int = 5) -> None:
         super()
         super().__init__()
-        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
         self.backup: str = "https://graphql-playground.pikachub2005.repl.co/"
         self.endpoint: str = "https://replit.com/graphql"
@@ -89,16 +85,16 @@ class Client(AsyncIOEventEmitter):
         }
         self.number_convert: List[str] = ["1st", "2nd", "3rd"]
         self.__reset_status_codes: List[int] = [429, 403, 520, 503, 502, 500]
-        self.posting_cache: Queue = Queue()
-        self.ratelimit: int = ratelimit
-        self.max_groups: int = 10
+        self.posting_cache = Queue()
+        self.ratelimit = ratelimit
+        self.max_groups = 10
         # self.limiter = aiolimiter.AsyncLimiter(self.ratelimit, 1)
-        self.sid: str = sid
+        self.sid = sid
 
-        __temp_headers: Dict[str, Any] = self.headers
+        __temp_headers = self.headers
         __temp_headers["Cookie"] = f"connect.sid={self.sid}"
 
-        self.session: ClientSession = ClientSession(headers=__temp_headers)
+        self.session = ClientSession(headers=__temp_headers)
 
         async def __temp_post_wrapper_cu():
             data = await self.gql("currentUser")
@@ -187,6 +183,12 @@ class Client(AsyncIOEventEmitter):
     async def login(self, username: str, password: str) -> str:
         return await self.gql("login", {"username": username, "password": password})
 
+    async def graphql(
+        self, sid: str, query: str, vars: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        """specify sid for post"""
+        return await self.post(query, vars, connection=sid)
+
     async def post(
         self,
         query: str,
@@ -274,7 +276,7 @@ class Client(AsyncIOEventEmitter):
                 _ = list(map(lambda x: x["data"], list(res["data"])))
                 return _
             except:
-                if "data" in res and "data" in res["data"]:
+                if "data" in res["data"]:
                     return res["data"]["data"]
                 else:
                     if "data" in res:
@@ -598,20 +600,18 @@ class PostManager:
 
 
 class NotificationManager:
-    def __init__(self, client: Client, seconds: int = 5) -> None:
+    def __init__(self, client: Client, seconds: int = 30) -> None:
         self.c = client
         self.cache = {}
 
         async def __wrapper():
             return await self.c.user.notifications.fetch_all()
 
-        self.track = Track(__wrapper, seconds, self.c)
+        self.track = Track(__wrapper, seconds)
 
         @self.track.on("update")
         async def resolve_notifications(notifs) -> None:
-            _ = list(notifs.keys())
-            _.reverse()
-            for i in _:
+            for i in notifs:
                 self.c.emit("notification", i, notifs[i])
             # if len(notifs) > 0:
             #     await self.markAsRead()
@@ -897,9 +897,6 @@ class User:
             return False
         await self.update(res["setBlocking"])
         return self.isBlockedBycurrentUser
-
-    def __str__(self):
-        return self.username
 
 
 class CurrentUser(User):
@@ -1410,9 +1407,3 @@ class Comment:
             if comment.id != None:
                 self.c.comments.cache[comment.id] = comment
         return comment
-
-    async def edit(self, body: str):
-        """edit comment"""
-        await self.c.gql("editComment", {"input": {"id": self.id, "body": body}})
-        self.body = body
-        return self

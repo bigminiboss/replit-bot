@@ -1,4 +1,4 @@
-# TUTORIAL: https://replit.com/@MiloCat/RBot-Docs#docs.md
+# TUTORIAL: https://replit.com/@Howtomakeabot/How-To-Make-Replit-Bots?v=1
 
 import os
 import json
@@ -8,43 +8,28 @@ import asyncio
 from random import randint
 from requests import get
 from replit_bot.AsyncBot import Bot
-from replit_bot import Param, __license__, __version__
+from replit_bot import Param, __license__, __version__, app
 from threading import Thread
 from markdown import markdown
-from flask import Flask
+from flask import render_template_string
 
-app = Flask(__name__)
-bot = Bot(os.environ["TOKEN"], prefix="/", bio="Follow my main acc @bigminiboss!")
-
-
-@bot.command("milo-cat")
-async def milo_cat(ctx):
-    count = {"a": 0, "b": 0}
-    questions = [
-        {"name": "do you like pancakes", "a": "no", "b": "yes"},
-        {"name": "do you like waffles", "a": "yes", "b": "no"},
-        {"name": "do you like eggs", "a": "yes", "b": "no"},
-        {"name": "are pancakes better than waffles?", "a": "no", "b": "yes"},
-    ]
-    i = questions[0]
-    x = await ctx.reply(
-        f"{i['name']}\n\n{ctx.button.a} ({i['a']})\n\n{ctx.button.b} ({i['b']})"
+app.route("/docs")(
+    lambda: render_template_string(
+        open("replit_bot/templates/index.html").read(),
+        html=markdown(open("README.md").read(), extensions=["fenced_code"]),
     )
-    count[await ctx.button.get_choice()] += 1
-    for i in questions[1:]:
-        await x.edit(
-            f"{i['name']}\n\n{ctx.button.a} ({i['a']})\n\n{ctx.button.b} ({i['b']})"
-        )
-        count[await ctx.button.get_choice()] += 1
+)
 
-    most = max(count, key=count.get)
-    await x.edit("You traitor" if most == "a" else "yay! we're friends")
+bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
+
+times = []
 
 
 @bot.command("enjoy-pancakes", alias=["enjoy"])
 async def enjoy(ctx):
     await ctx.reply(
-        f"{ctx.author.mention} hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
+        f"hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
+        mention=True,
     )
     await ctx.reply(
         "You traitor" if await ctx.button.get_choice() == "no" else "yay! we're friends"
@@ -76,7 +61,7 @@ async def repl(ctx):
     repl = ctx.repl
 
     await ctx.reply(
-        f"""**{repl.title}**•**{repl.timeUpdated}**
+        f"""**{repl.title}**•*{repl.timeUpdated}*
 ```
 ➤ Id: {repl.id}
 ➤ Created: {repl.timeCreated}
@@ -131,7 +116,8 @@ async def _code_info(ctx):
 async def on_who_is(ctx, person: Param(required=True)):
     person = await bot.users.fetch(person)
     await ctx.reply(
-        f"{ctx.author.mention} @{person.username} is {person.firstName} {person.lastName}. They speak {person.locale} and they are verified = {person.isVerified}. Their bio is: {person.bio}. They have {person.followerCount} followers and are following {person.followCount} people"
+        f"@{person.username} is {person.firstName} {person.lastName}. They speak {person.locale} and they are verified = {person.isVerified}. Their bio is: {person.bio}. They have {person.followerCount} followers and are following {person.followCount} people",
+        mention=True,
     )
 
 
@@ -144,4 +130,4 @@ async def on_who_is(ctx, person: Param(required=True)):
 # def when_followed(ctx, person):
 #     person.setFollowing(True)
 
-bot.run(auto_create_docs=True, flask_app=app)
+bot.run(auto_create_docs=True)

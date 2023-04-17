@@ -3,24 +3,13 @@
 import urllib.parse
 import logging
 import os
-import re
-import math
 import asyncio
 from .AsyncClient import Client
 from .links import links
-from .html_default_templates import (
-    ORIGINAL_HTML,
-    PARAM_BIO,
-    HTML_LIST,
-    BLOCKQUOTE,
-    TEMPLATE,
-)
+from .html_default_templates import ORIGINAL_HTML, PARAM_BIO, HTML_LIST, BLOCKQUOTE
 from typing import Callable as Function, Any, Dict, Tuple, get_type_hints, List
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template, request
 from waitress import serve
-
-# from hypercorn.config import Config
-# from hypercorn.asyncio import serve
 from threading import Thread
 from time import sleep
 from .param import Param
@@ -28,8 +17,8 @@ from .exceptions import NamesMustBeAlphanumeric, MustBeRunOnReplitForButtons
 from .utils._uuid import random_characters
 from .post_ql import post
 from .colors import green, blue, purple, red, end, bold_green, bold_blue
-import uuid
 
+app = Flask(__name__)
 _started_buttons = {}
 # line_sep = "-" * os.get_terminal_size().columns
 line_sep = "-" * 80
@@ -42,6 +31,31 @@ logging.basicConfig(
     datefmt="%d-%b-%y %H:%M:%S",
     level=logging.INFO,
 )
+
+
+@app.route("/<command>/<user>/<choice>/<rand_chars>")
+def _parse_button_commands(command, user, choice, rand_chars):
+    global _started_buttons
+    if request.headers["X-Replit-User-Name"] == "":
+        return render_template(
+            "index.html",
+            html='<center><div><script authed="location.reload()" src="https://auth.util.repl.co/script.js"></script></div></center>',
+        )
+    if (
+        command in _started_buttons
+        and user in _started_buttons[command]
+        and rand_chars in _started_buttons[command][user]
+        and user == request.headers["X-Replit-User-Name"]
+    ):
+        _started_buttons[command][user][rand_chars] = choice
+        return render_template(
+            "index.html",
+            html="<center><h1>your request has been processed, you can close this tab</h1></center>",
+        )
+    else:
+        return render_template(
+            "index.html", html="<center><h1>you cannot do this right now</h1></center>"
+        )
 
 
 class Button:
@@ -86,6 +100,8 @@ class Bot(Client):
         token: str = None,
         prefix: str = "/",
         bio: str = "",
+        allow_api: bool = False,
+        api_path: str = "/api",
     ) -> None:
         if token is not None:
             super(Client, self).__init__()
@@ -99,7 +115,9 @@ class Bot(Client):
                 if links.docs is not None:
                     await ctx.reply(f"See the docs there {links.docs}")
                 else:
-                    await ctx.reply(self.generate_doc_html())
+                    await ctx.reply(
+                        "This bot has not docs. You can check specific commands however"
+                    )
             else:
                 await ctx.reply(
                     f"description of command: {self.commands[command]['desc']}"
@@ -110,7 +128,7 @@ class Bot(Client):
             __current += (
                 f" You can see the bot docs here {links.docs}"
                 if links.docs is not None
-                else self.generate_doc_html()
+                else ""
             )
             await ctx.reply(__current)
 
@@ -119,100 +137,14 @@ class Bot(Client):
             __current += (
                 f" You can check the bot docs here {links.docs}"
                 if links.docs is not None
-                else self.generate_doc_html()
+                else ""
             )
             await ctx.reply(__current)
 
-        async def __default_call_when_followed(ctx, person) -> None:
+        async def _call_when_followed(ctx, person) -> None:
             logger.info(
                 f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} @{person.username} followed bot"
             )
-
-        async def __default_when_invited_to_repl(ctx) -> None:
-            return await ctx.reply(
-                "Hello @everyone ! Thanks for inviting me to this repl"
-            )
-
-        async def __wrapper_update_bio() -> None:
-            await self.user.change({"bio": bio})
-
-        async def __wrapper_fetch_multiplayers() -> List[Any]:
-            cursor = None
-            first = True
-            while first or cursor is not None:
-                first = False
-                x = await self.gql(
-                    """getMultiplayerRepls""", {"path": "multiplayer", "after": cursor}
-                )
-                repls = x["currentUser"]["replFolderByPath"]["repls"]["items"]
-                cursor = x["currentUser"]["replFolderByPath"]["repls"]["pageInfo"][
-                    "nextCursor"
-                ]
-                for i in repls:
-                    repl = await self.gql("repl", {"id": i["id"]})
-                    url = repl["repl"]["url"]
-                    res = await self.gql("getReplAnnotations", {"id": i["id"]})
-                    repl_annotations = res["repl"]
-                    if repl_annotations is None:
-                        return
-                    anchor = list(
-                        filter(
-                            lambda x: x["isGeneral"],
-                            repl_annotations["annotationAnchors"],
-                        )
-                    )
-                    if len(anchor) > 0:
-                        anchor = anchor[0]
-                    else:
-                        anchor = {"id": None}
-                    super_self = self
-
-                    class CurrentCtx:
-                        def __init__(self):
-                            self.notif_type = "MultiplayerInvitedNotification"
-                            self.repl_url = url
-                            self.repl_id = repl_annotations["id"]
-                            self.anchor_id = anchor["id"]
-                            self.super_self = super_self
-
-                        async def reply(self, body) -> None:
-                            if self.anchor_id is not None:
-                                return await self.super_self.gql(
-                                    "createChatMessage",
-                                    vars={
-                                        "replId": self.repl_id,
-                                        "anchorId": self.anchor_id,
-                                        "annotationMessage": {
-                                            "id": str(uuid.uuid4()),
-                                            "text": body,
-                                        },
-                                    },
-                                )
-                            else:
-
-                                self.anchor_id = ""
-                                await self.super_self.gql(
-                                    "chatInit",
-                                    {
-                                        "annotationAnchor": {
-                                            "id": str(uuid.uuid4()),
-                                            "replId": self.repl_id,
-                                            "isGeneral": True,
-                                            "isResolved": False,
-                                        },
-                                        "annotationMessage": {
-                                            "id": str(uuid.uuid4()),
-                                            "text": body,
-                                            "mentions": [],
-                                        },
-                                    },
-                                )
-
-                    ctx = CurrentCtx()
-                    for i in dir(self):
-                        if not i.startswith("__") and not i.endswith("__"):
-                            setattr(ctx, i, getattr(self, i))
-                    self.multiplayer_repls.append(ctx)
 
         self.commands = {
             "help": {
@@ -223,61 +155,58 @@ class Bot(Client):
                 "params": {"command": Param(required=False, default="None")},
             }
         }
-        self.doc_html = None  # deadlock for if html generated || stores html
-        self._call_when_followed = __default_call_when_followed
         self._default = __current_default
         self._not_all_required_params_specified = __not_included_params
-        self._when_invited_to_repl = __default_when_invited_to_repl
         self.token = token
         self.bio = bio
         self.prefix = prefix
         self.alias = {}
         self.listeners = {}
         self.threads_ = []
-        self.multiplayer_repls = []
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(__wrapper_update_bio())
-        loop.run_until_complete(__wrapper_fetch_multiplayers())
+        self._allow_api = allow_api
+        if self._allow_api:
+
+            @app.route(api_path, methods=["POST"])
+            async def _raw_api():
+                kwargs = {"vars": {}, "raw": True}
+                kwargs.update(request.json)
+                return await self.gql(kwargs["query"], kwargs["vars"], kwargs["raw"])
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
     ):
         """takes in args"""
-        if name is not None:
-            name = name.lower()
-            if not name.replace("-", "").isalnum():
-                raise NamesMustBeAlphanumeric("Name must be alphanumeric")
+        name = name.lower()
+        if not name.replace("-", "").isalnum():
+            raise NamesMustBeAlphanumeric("Name must be alphanumeric")
 
         def wrapper(func: Function[..., Any]) -> Function[..., Any]:
             """adds to command list"""
-            x = name if name is not None else func.__name__
-            self.commands[x] = {
+            self.commands[name] = {
                 "call": func,
                 "desc": desc,
-                "name": x,
+                "name": name,
                 "params": get_type_hints(func),
                 "thread": thread,
             }
             for i in alias:
-                self.alias[i] = x
+                self.alias[i] = name
 
         return wrapper
 
     def listener(self, name: str, thread: bool = False, desc: str = None):
-        if name is not None:
-            name = name.lower()
-            if not name.replace("-", "").isalnum():
-                raise NamesMustBeAlphanumeric("Name must be alphanumeric")
+        name = name.lower()
+        if not name.replace("-", "").isalnum():
+            raise NamesMustBeAlphanumeric("Name must be alphanumeric")
 
         def wrapper(func: Function[..., Any]) -> Function[..., Any]:
-            x = name if name is not None else func.__name__
-            if x not in self.listeners:
-                self.listeners[x] = []
-            self.listeners[x].append(
+            if name not in self.listeners:
+                self.listeners[name] = []
+            self.listeners[name].append(
                 {
                     "call": func,
                     "desc": desc,
-                    "name": x,
+                    "name": name,
                     "params": get_type_hints(func),
                     "thread": thread,
                 }
@@ -285,23 +214,21 @@ class Bot(Client):
 
         return wrapper
 
-    def follower(self, func):
+    async def follower(self, func):
         self._call_when_followed = func
 
-    def default(self, func):
+    async def default(self, func):
         self._default = func
 
-    def fallback_param_not_included_case(self, func):
+    async def fallback_param_not_included_case(self, func):
         self._not_all_required_params_specified = func
-
-    def when_invited_to_repl(self, func):
-        self._when_invited_to_repl = func
 
     async def parse_command(self, command: str):
         """parses command
 
-        @Example-Bot /say message:hi!
+        `@Example-Bot /say message:hi!`
         ->
+        ```
         {
             "options": {
                 "message": "hi!"
@@ -309,6 +236,8 @@ class Bot(Client):
             "ping statement": "@Example-Bot",
             "command": "hello"
         }
+        ```
+
         """
         splited = command.split(" ")
         if len(splited) < 2 or not splited[1].startswith(self.prefix):
@@ -335,11 +264,11 @@ class Bot(Client):
             output["options"][_current_command] = current.rstrip()
         return output
 
-    async def valid_command(self, resp: str) -> Tuple[bool, Dict[str, Any]]:
+    async def valid_command(self, resp: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         """validates command. Returns true if is valid `(True, parsed_json)` or false if not `(False, {'None': None})`"""
-        if resp is None:
+        if resp == {} or resp["comment"] == None:
             return (False, {"None": None})
-        parsed = await self.parse_command(resp)
+        parsed = self.parse_command(resp["comment"]["body"])
         if (
             parsed == {}
             or parsed["ping statement"].strip("@") != self.user.username.lower()
@@ -364,11 +293,8 @@ class Bot(Client):
                 output[i] = params[i].type_cast(output[i])
         return (True, output)
 
-    def generate_doc_html(self) -> None:
+    def create_docs(self) -> None:
         """automatically creates the documentation for the bot"""
-        if self.doc_html is not None:
-            return self.doc_html
-
         html = ORIGINAL_HTML.format(
             self.user.username,
             self.prefix,
@@ -421,16 +347,12 @@ class Bot(Client):
                     _param.type_cast.__name__,
                 )
 
-        return html
+        @app.route("/")
+        def _() -> None:
+            return render_template("index.html", html=html)
 
-    def run(
-        self,
-        token: str = None,
-        auto_create_docs: bool = False,
-        flask_app: Flask = None,
-        daemon: bool = True,
-    ) -> None:
-        """main runner code, input a flask app and auto_create_docs if you want auto created docs"""
+    def run(self, auto_create_docs: bool = True, token: str = None) -> None:
+        """mainest runner code"""
         if token is not None and not self.init_:
             super()
             super().__init__(token)
@@ -442,59 +364,15 @@ class Bot(Client):
                 f'{green}[FILE] BOT.py{end}\n{bold_green}[STARTING BOT]{end} Botting "{bold_blue}{client.user.username}{end}"'
             )
 
-        self.emit("ready", self)
-        self.doc_html = self.generate_doc_html()
-
-        if auto_create_docs and flask_app is None:
-            flask_app = Flask("replit_bot")
-
-        if flask_app is not None:
-
-            if auto_create_docs:
-
-                @flask_app.route("/")
-                def _():
-                    return render_template_string(TEMPLATE, html=self.doc_html)
-
-            else:
-                links.docs = None
-
-            @flask_app.route("/<command>/<user>/<choice>/<rand_chars>")
-            def _parse_button_commands(command, user, choice, rand_chars):
-                global _started_buttons
-                if rand_chars[-1] == ")":
-                    rand_chars = rand_chars[:-1]
-                if request.headers["X-Replit-User-Name"] == "":
-                    return render_template_string(
-                        TEMPLATE,
-                        html='<center><div><script authed="location.reload()" src="https://auth.util.repl.co/script.js"></script></div></center>',
-                    )
-                if (
-                    command in _started_buttons
-                    and user in _started_buttons[command]
-                    and rand_chars in _started_buttons[command][user]
-                    and _started_buttons[command][user][rand_chars] is None
-                    and user == request.headers["X-Replit-User-Name"]
-                ):
-                    _started_buttons[command][user][rand_chars] = choice
-                    return render_template_string(
-                        TEMPLATE,
-                        html="<center><h1>your request has been processed, you can close this tab</h1></center>",
-                    )
-                else:
-                    return render_template_string(
-                        TEMPLATE,
-                        html="<center><h1>you cannot do this right now</h1></center>",
-                    )
-
-        else:
-            links.docs = None
+        if auto_create_docs:
+            self.create_docs()
 
         @self.on("notification")
         async def _run(notif_id, notif) -> None:
             """main runner code"""
             # MentionedInPost, MentionedInComment, RepliedToComment, RepliedToPost, AnswerAccepted, MultiplayerJoinedEmail, MultiplayerJoinedLink, MultiplayerInvited, MultiplayerOverlimit, Warning, TeamInvite, TeamOrganizationInvite, Basic, TeamTemplateSubmitted, TeamTemplateReviewedStatus, Annotation, EditRequestCreated, EditRequestAccepted, ReplCommentCreated, ReplCommentReplyCreated, ReplCommentMention, Thread, NewFollower
             await self.gql("markOneAsRead", {"id": notif_id})
+
             __typename = getattr(notif, "__typename")
             if __typename == "WarningNotification":
                 logger.critical(
@@ -502,15 +380,7 @@ class Bot(Client):
                 )
             elif __typename == "NewFollowerNotification":
                 await self._call_when_followed(self, notif.creator)
-            elif (
-                __typename == "ReplCommentMentionNotification"
-                or __typename == "MentionedInPost"
-            ) and getattr(notif, "comment", False):
-                if notif.comment.parentComment is not None:
-                    notif.comment.thread = notif.comment.parentComment.comments
-                else:
-                    notif.comment.thread = notif.comment.comments
-                notif.comment.notif_type = __typename
+            elif getattr(notif, "comment", False):
                 notif.comment.author = notif.comment.user
                 notif.comment.author.mention = "@" + notif.comment.author.username
                 notif.comment.Image = lambda url, caption="": f"![{caption}]({url})"
@@ -518,17 +388,10 @@ class Bot(Client):
                 for i in dir(self):
                     if not i.startswith("__") and not i.endswith("__"):
                         setattr(notif.comment, i, getattr(self, i))
-                valid_first, parsed_json = await self.valid_command(notif.comment.body)
-                if not valid_first:
-                    return
-
-                if (
-                    "command" in parsed_json
-                    and (
-                        parsed_json["command"] in self.commands
-                        or parsed_json["command"] in self.alias
-                    )
-                    and valid_first
+                parsed_json = await self.parse_command(notif.comment.body)
+                if "command" in parsed_json and (
+                    parsed_json["command"] in self.commands
+                    or parsed_json["command"] in self.alias
                 ):
                     c = parsed_json["command"]
                     if parsed_json["command"] in self.alias:
@@ -536,7 +399,7 @@ class Bot(Client):
                     valid, kwargs = await self.get_kwargs(
                         self.commands[c], parsed_json["options"]
                     )
-                    if valid and valid_first:
+                    if valid:
                         notif.comment.button = Button(notif.comment.author.username, c)
 
                         logger.info(
@@ -553,18 +416,16 @@ class Bot(Client):
                             await self.commands[c]["call"](notif.comment, **kwargs)
                         else:
                             await self.commands[c]["call"](notif.comment, **kwargs)
-                    elif valid_first:
+                    else:
                         await self._not_all_required_params_specified(notif.comment)
-                elif (
-                    "command" in parsed_json
-                    and (parsed_json["command"] in self.listeners)
-                    and valid_first
+                elif "command" in parsed_json and (
+                    parsed_json["command"] in self.listeners
                 ):
                     c = parsed_json["command"]
                     valid, kwargs = await self.get_kwargs(
                         self.listeners[c], parsed_json["options"]
                     )
-                    if valid and valid_first:
+                    if valid:
                         notif.comment.button = Button(notif.comment.user.username, c)
                         logger.info(
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
@@ -581,267 +442,20 @@ class Bot(Client):
                                 await command[c]["call"](notif.comment, **kwargs)
                             else:
                                 await command[c]["call"](notif.comment, **kwargs)
-                    elif valid_first:
+                    else:
                         logger.info(
                             f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                         )
                         await self._not_all_required_params_specified(notif.comment)
-                elif "command" in parsed_json and valid_first:
+                elif "command" in parsed_json:
                     logger.info(
                         f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
                     )
                     await self._default(notif.comment)
-            elif __typename == "AnnotationNotification":
-                super_self = self
 
-                class CurrentThread:
-                    def __init__(self, data) -> None:
-                        self.id = data["id"]
-                        self.anchor_id = data["anchor"]["id"]
-                        self.seen = data["seen"]
-                        self.user = None
-
-                        async def __temp_wrapper():
-                            self.user = await super_self.users.fetch(
-                                data["user"]["username"]
-                            )
-
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(__temp_wrapper())
-                        self.body = data["content"]["text"]
-
-                res = await self.gql(
-                    "getReplAnnotations",
-                    {"url": notif.url},
-                )
-                repl_annotations = res["repl"]
-                if repl_annotations is None:
-                    return
-                anchor = list(
-                    filter(
-                        lambda x: x["isGeneral"], repl_annotations["annotationAnchors"]
-                    )
-                )[0]
-                if not anchor:
-                    return
-                messages = list(map(lambda x: CurrentThread(x), anchor["messages"]))
-                message = list(
-                    filter(
-                        lambda x: x.body.startswith("@" + self.user.username)
-                        and not x.seen,
-                        messages,
-                    )
-                )
-                message = message[0]
-                await self.gql(
-                    "markMessageAsSeen",
-                    {"replId": repl_annotations["id"], "anchorId": anchor["id"]},
-                )
-
-                class CurrentCtx:
-                    def __init__(self):
-                        self.thread = messages
-                        self.notif_type = "AnnotationNotification"
-                        self.repl_id = repl_annotations["id"]
-                        self.anchor_id = anchor["id"]
-
-                    async def reply(self, body) -> None:
-                        return await self.gql(
-                            "createChatMessage",
-                            vars={
-                                "replId": self.repl_id,
-                                "anchorId": self.anchor_id,
-                                "annotationMessage": {
-                                    "id": str(uuid.uuid4()),
-                                    "text": body,
-                                },
-                            },
-                        )
-
-                ctx = CurrentCtx()
-                for i in dir(self):
-                    if not i.startswith("__") and not i.endswith("__"):
-                        setattr(ctx, i, getattr(self, i))
-                for i in dir(message):
-                    if not i.startswith("__") and not i.endswith("__"):
-                        setattr(ctx, i, getattr(message, i))
-
-                ctx.author = ctx.user
-                ctx.author.mention = "@" + ctx.user.username
-                valid_first, parsed_json = await self.valid_command(ctx.body)
-                if not valid_first:
-                    return
-
-                if (
-                    "command" in parsed_json
-                    and (
-                        parsed_json["command"] in self.commands
-                        or parsed_json["command"] in self.alias
-                    )
-                    and valid_first
-                ):
-                    c = parsed_json["command"]
-                    if parsed_json["command"] in self.alias:
-                        c = self.alias[c]
-                    valid, kwargs = await self.get_kwargs(
-                        self.commands[c], parsed_json["options"]
-                    )
-                    if valid and valid_first:
-                        ctx.button = Button(ctx.author.username, c)
-
-                        logger.info(
-                            f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
-                        )
-                        if self.commands[c]["thread"]:
-                            # t = Thread(
-                            #     target=self.commands[c]["call"],
-                            #     args=(notif.comment,),
-                            #     kwargs=kwargs,
-                            # )
-                            # t.start()
-                            # self.threads_.append(t)
-                            await self.commands[c]["call"](ctx, **kwargs)
-                        else:
-                            await self.commands[c]["call"](ctx, **kwargs)
-                    elif valid_first:
-                        await self._not_all_required_params_specified(ctx)
-                elif (
-                    "command" in parsed_json
-                    and (parsed_json["command"] in self.listeners)
-                    and valid_first
-                ):
-                    c = parsed_json["command"]
-                    valid, kwargs = await self.get_kwargs(
-                        self.listeners[c], parsed_json["options"]
-                    )
-                    if valid and valid_first:
-                        ctx.button = Button(ctx.user.username, c)
-                        logger.info(
-                            f"{green}[FILE] BOT.py{end}\n{green}[INFO] logging command{end}.\n\t{blue}[SUMMARY]{end} {green}command successful{end}\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
-                        )
-                        for command in self.listeners[c]:
-                            if command[c]["thread"]:
-                                # t = Thread(
-                                #     target=command[c]["call"],
-                                #     args=(notif.comment,),
-                                #     kwargs=kwargs,
-                                # )
-                                # t.start()
-                                # self.threads_.append(t)
-                                await command[c]["call"](ctx, **kwargs)
-                            else:
-                                await command[c]["call"](ctx, **kwargs)
-                    elif valid_first:
-                        logger.info(
-                            f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsucessful: {red}Not all required params specified{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
-                        )
-                        await self._not_all_required_params_specified(ctx)
-                elif "command" in parsed_json and valid_first:
-                    logger.info(
-                        f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} logging command\n\t{blue}[SUMMARY]{end} unsuccessful: {red}Invalid command{end}.\n\t{purple}[EXTRA]{end} Requested command: {parsed_json['command']}"
-                    )
-                    await self._default(ctx)
-            elif __typename == "MultiplayerInvitedNotification":
-                super_self = self
-                url = notif.__dict__["url"]
-                res = await self.gql("getReplAnnotations", {"url": url})
-                repl_annotations = res["repl"]
-                if repl_annotations is None:
-                    return
-                anchor = list(
-                    filter(
-                        lambda x: x["isGeneral"], repl_annotations["annotationAnchors"]
-                    )
-                )
-                if len(anchor) > 0:
-                    anchor = anchor[0]
-                else:
-                    anchor = {"id": None}
-
-                class CurrentThread:
-                    def __init__(self, data) -> None:
-                        self.id = data["id"]
-                        self.anchor_id = data["anchor"]["id"]
-                        self.seen = data["seen"]
-                        self.user = None
-
-                        async def __temp_wrapper():
-                            self.user = await super_self.users.fetch(
-                                data["user"]["username"]
-                            )
-
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(__temp_wrapper())
-                        self.body = data["content"]["text"]
-
-                messages = list(map(lambda x: CurrentThread(x), anchor["messages"]))
-                message = list(
-                    filter(
-                        lambda x: x.body.startswith("@" + self.user.username)
-                        and not x.seen,
-                        messages,
-                    )
-                )
-                super_self = self
-
-                class CurrentCtx:
-                    def __init__(self):
-                        self.thread = messages
-                        self.notif_type = "MultiplayerInvitedNotification"
-                        self.repl_url = url
-                        self.repl_id = repl_annotations["id"]
-                        self.anchor_id = anchor["id"]
-                        self.super_self = super_self
-
-                    async def reply(self, body) -> None:
-                        if self.anchor_id is not None:
-                            return await self.super_self.gql(
-                                "createChatMessage",
-                                vars={
-                                    "replId": self.repl_id,
-                                    "anchorId": self.anchor_id,
-                                    "annotationMessage": {
-                                        "id": str(uuid.uuid4()),
-                                        "text": body,
-                                    },
-                                },
-                            )
-                        else:
-
-                            self.anchor_id = ""
-                            await self.super_self.gql(
-                                "chatInit",
-                                {
-                                    "annotationAnchor": {
-                                        "id": str(uuid.uuid4()),
-                                        "replId": self.repl_id,
-                                        "isGeneral": True,
-                                        "isResolved": False,
-                                    },
-                                    "annotationMessage": {
-                                        "id": str(uuid.uuid4()),
-                                        "text": body,
-                                        "mentions": [],
-                                    },
-                                },
-                            )
-
-                ctx = CurrentCtx()
-                for i in dir(self):
-                    if not i.startswith("__") and not i.endswith("__"):
-                        setattr(ctx, i, getattr(self, i))
-                logger.info(
-                    f"{green}[FILE] BOT.py{end}\n{green}[INFO]{end} got invited to repl {url}"
-                )
-                self.multiplayer_repls.append(ctx)
-                await self._when_invited_to_repl(ctx)
-
-        if flask_app is not None:
+        if auto_create_docs:
             Thread(
-                target=serve,
-                kwargs={"app": flask_app, "host": "0.0.0.0", "port": 8080},
-                daemon=daemon,
+                target=serve, kwargs={"app": app, "host": "0.0.0.0", "port": 8080}
             ).start()
-
         loop = asyncio.get_event_loop()
         loop.run_until_complete(self.user.notifications.startEvents())

@@ -133,6 +133,9 @@ class Bot(Client):
                 "Hello @everyone ! Thanks for inviting me to this repl"
             )
 
+        async def __wrapper_update_bio() -> None:
+            await self.user.change({"bio": bio})
+
         async def __wrapper_fetch_multiplayers() -> List[Any]:
             cursor = None
             first = True
@@ -232,43 +235,49 @@ class Bot(Client):
         self.listeners = {}
         self.threads_ = []
         self.multiplayer_repls = []
-        asyncio.get_event_loop().run_until_complete(__wrapper_fetch_multiplayers())
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(__wrapper_update_bio())
+        loop.run_until_complete(__wrapper_fetch_multiplayers())
 
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
     ):
         """takes in args"""
-        name = name.lower()
-        if not name.replace("-", "").isalnum():
-            raise NamesMustBeAlphanumeric("Name must be alphanumeric")
+        if name is not None:
+            name = name.lower()
+            if not name.replace("-", "").isalnum():
+                raise NamesMustBeAlphanumeric("Name must be alphanumeric")
 
         def wrapper(func: Function[..., Any]) -> Function[..., Any]:
             """adds to command list"""
-            self.commands[name] = {
+            x = name if name is not None else func.__name__
+            self.commands[x] = {
                 "call": func,
                 "desc": desc,
-                "name": name,
+                "name": x,
                 "params": get_type_hints(func),
                 "thread": thread,
             }
             for i in alias:
-                self.alias[i] = name
+                self.alias[i] = x
 
         return wrapper
 
     def listener(self, name: str, thread: bool = False, desc: str = None):
-        name = name.lower()
-        if not name.replace("-", "").isalnum():
-            raise NamesMustBeAlphanumeric("Name must be alphanumeric")
+        if name is not None:
+            name = name.lower()
+            if not name.replace("-", "").isalnum():
+                raise NamesMustBeAlphanumeric("Name must be alphanumeric")
 
         def wrapper(func: Function[..., Any]) -> Function[..., Any]:
-            if name not in self.listeners:
-                self.listeners[name] = []
-            self.listeners[name].append(
+            x = name if name is not None else func.__name__
+            if x not in self.listeners:
+                self.listeners[x] = []
+            self.listeners[x].append(
                 {
                     "call": func,
                     "desc": desc,
-                    "name": name,
+                    "name": x,
                     "params": get_type_hints(func),
                     "thread": thread,
                 }

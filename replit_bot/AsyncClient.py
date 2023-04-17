@@ -18,6 +18,7 @@ from .exceptions import InvalidSid
 import requests
 import json
 import asyncio
+import uvloop
 
 # import aiolimiter
 import base64
@@ -71,6 +72,7 @@ class Client(AsyncIOEventEmitter):
     def __init__(self, sid: str, ratelimit: int = 5) -> None:
         super()
         super().__init__()
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
         self.backup: str = "https://graphql-playground.pikachub2005.repl.co/"
         self.endpoint: str = "https://replit.com/graphql"

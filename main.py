@@ -1,4 +1,4 @@
-# TUTORIAL: https://replit.com/@Howtomakeabot/How-To-Make-Replit-Bots?v=1
+# TUTORIAL: https://replit.com/@MiloCat/RBot-Docs#docs.md
 
 import os
 import json
@@ -14,7 +14,7 @@ from markdown import markdown
 from flask import Flask
 
 app = Flask(__name__)
-bot = Bot(os.environ["TOKEN"], prefix="/", bio="This is a bot")
+bot = Bot(os.environ["TOKEN"], prefix="/", bio="Follow my main acc @bigminiboss!")
 
 
 @bot.command("milo-cat")

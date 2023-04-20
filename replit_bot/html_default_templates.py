@@ -1,6 +1,6 @@
 """Some html templates. Will convert to jina and add to replit-bot/templates/ later"""
 
-ORIGINAL_HTML = """<center><h1>Commands are as followed</h1></center>
+ORIGINAL_HTML = """<center><h1>Commands are as follows</h1></center>
 <pre><code>@{} {}command-here param1:here param2:here</code></pre>
 <hr><center><h1>Commands</h1></center>{}<hr>"""
 

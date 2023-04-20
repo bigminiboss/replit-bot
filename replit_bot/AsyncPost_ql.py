@@ -1,4 +1,4 @@
-"""file that handles posting to replit graphql endpoint for queries and mutations"""
+"""File that handles posting to replit graphql endpoint for queries and mutations"""
 
 import json
 from time import sleep
@@ -40,7 +40,7 @@ async def post(
     retry_for_internal_errors: bool = True,
     __different_endpoint: str = None,
 ):
-    """post query with vars to replit graph query language"""
+    """Post query with vars to replit graph query language"""
 
     class InitialRequest:
         def __init__(self):

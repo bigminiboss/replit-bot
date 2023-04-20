@@ -1,4 +1,4 @@
-"""Some html templates. Will convert to jina and add to replit-bot/templates/ later"""
+"""Some html templates. Will convert to jinja and add to replit-bot/templates/ later"""
 
 ORIGINAL_HTML = """<center><h1>Commands are as follows</h1></center>
 <pre><code>@{} {}command-here param1:here param2:here</code></pre>

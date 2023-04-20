@@ -1,10 +1,10 @@
-"""a few links"""
+"""File that has a few links"""
 
 from os import environ
 
 
 class links:
-    """bot urls (docs)"""
+    """Bot urls (docs)"""
 
     if (
         "REPL_SLUG" not in environ

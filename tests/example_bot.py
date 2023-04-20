@@ -1,5 +1,3 @@
-# TUTORIAL: https://replit.com/@Howtomakeabot/How-To-Make-Replit-Bots?v=1
-
 import os
 import json
 import time

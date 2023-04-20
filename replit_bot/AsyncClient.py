@@ -186,7 +186,7 @@ class Client(AsyncIOEventEmitter):
     async def graphql(
         self, sid: str, query: str, vars: Dict[str, Any] = {}
     ) -> Dict[str, Any]:
-        """specify sid for post"""
+        """Specify sid for post"""
         return await self.post(query, vars, connection=sid)
 
     async def post(
@@ -198,7 +198,7 @@ class Client(AsyncIOEventEmitter):
         __different_endpoint: str = None,
         connection: str = None,
     ):
-        """post query with vars to replit graph query language"""
+        """Post query with vars to replit graph query language"""
 
         __temp_headers = {}
 
@@ -285,7 +285,7 @@ class Client(AsyncIOEventEmitter):
                         return res
 
     async def resolve_cached_post(self) -> None:
-        """resolves top x cached posts"""
+        """Resolves top x cached posts"""
         amt = 0
         input_json_list = []
         while amt < self.max_groups and not self.posting_cache.empty():
@@ -334,7 +334,7 @@ class Client(AsyncIOEventEmitter):
             await self.resolve_cached_post()
 
     async def gql(self, query: str, vars: Dict[str, Any] = {}) -> Dict[str, Any]:
-        """always sends to server with client sid"""
+        """Always sends to server with client sid"""
         loop = asyncio.get_event_loop()
         future = loop.create_future()
         self.posting_cache.put_nowait(
@@ -840,7 +840,7 @@ class CommentManager:
 
 
 class User:
-    """user object. Follow and blocking"""
+    """User object. Follow and blocking"""
 
     def __init__(self, client) -> None:
         self.c = client
@@ -850,7 +850,7 @@ class User:
         self.posts = PostManager(self.c, self)
 
     async def update(self, data: Dict[str, Any]):
-        """update profile"""
+        """Update profile"""
         timeCreated, presenceStatus = (None, None)
         if "timeCreated" in data and data["timeCreated"]:
             timeCreated = data["timeCreated"]
@@ -867,13 +867,13 @@ class User:
             self.online = presenceStatus["isOnline"]
 
     async def setFollowing(self, should_follow: bool = True) -> bool:
-        """follow a user and return whether they are following you"""
+        """Follow a user and return whether they are following you"""
         res = await self.c.gql(
             "follow",
             vars={
                 "input": {
                     "targetUserId": self.id,
-                    "shouldFollow": should_follow and True,
+                    "shouldFollow": should_follow, # and True,
                 }
             },
         )
@@ -883,13 +883,13 @@ class User:
         return self.isFollowedBycurrentUser
 
     async def setBlock(self, should_block: bool = True) -> bool:
-        """blocks a user and return whether they are blocking you"""
+        """Blocks a user and return whether they are blocking you"""
         res = await self.c.gql(
             "block",
             vars={
                 "input": {
                     "targetUserId": self.id,
-                    "shouldFollow": should_block and True,
+                    "shouldFollow": should_block, # and True,
                 }
             },
         )
@@ -909,7 +909,7 @@ class CurrentUser(User):
         self.auth = {"google": None, "github": None, "facebook": None}
 
     async def update(self, data: Dict[str, Any] = {}):
-        """update profile"""
+        """Update profile"""
 
         login = {
             "googleAuth": None,
@@ -1375,14 +1375,14 @@ class Comment:
         return self
 
     async def delete(self) -> None:
-        """delete comment"""
+        """Delete comment"""
         if "delete" not in self.currentUserPermission:
             self.currentUserPermission["delete"] = None
         if self.currentUserPermission["delete"] or self.isAuthor or self.repl.isOwner:
             await self.c.gql("deleteComment", vars={"id": self.id})
 
     async def reply(self, body: str, **options: Dict[str, Any]):
-        """reply comment"""
+        """Reply comment"""
         current = {"cache": True}
         current.update(options)
         options = JSDict(current)

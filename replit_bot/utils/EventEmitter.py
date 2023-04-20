@@ -1,4 +1,4 @@
-"""file handles Event Emmittion"""
+"""File that handles Event Emmittion"""
 
 import logging
 import os

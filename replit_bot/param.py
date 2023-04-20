@@ -1,4 +1,4 @@
-"""file that stores the Param for type hints
+"""File that stores the Param for type hints
 
 .. code-block:: python
 
@@ -27,7 +27,7 @@ dumb_class.__name__ = "Any"
 
 
 class Param:
-    """similar to discord.py param type hinting for commands"""
+    """Similar to discord.py's param type hinting for commands"""
 
     def __init__(
         self,
@@ -45,5 +45,5 @@ class Param:
         self.detect_type = detect_type
         if not self.required and self.default is None:
             raise NonRequiredParamsMustHaveDefault(
-                "no required params must have default"
+                "Non required params must have default"
             )

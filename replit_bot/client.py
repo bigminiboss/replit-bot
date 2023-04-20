@@ -636,7 +636,7 @@ class CommentManager:
 
 
 class User:
-    """user object. Follow and blocking"""
+    """User object. Follow and blocking"""
 
     def __init__(self, client) -> None:
         self.c = client
@@ -646,7 +646,7 @@ class User:
         self.posts = PostManager(self.c, self)
 
     def update(self, data: Dict[str, Any]):
-        """update profile"""
+        """Update profile"""
         timeCreated, presenceStatus = (None, None)
         if "timeCreated" in data and data["timeCreated"]:
             timeCreated = data["timeCreated"]
@@ -663,14 +663,14 @@ class User:
             self.online = presenceStatus["isOnline"]
 
     def setFollowing(self, should_follow: bool = True) -> bool:
-        """follow a user and return whether they are following you"""
+        """Follow a user and return whether they are following you"""
         res = post(
             self.c.sid,
             "follow",
             vars={
                 "input": {
                     "targetUserId": self.id,
-                    "shouldFollow": should_follow and True,
+                    "shouldFollow": should_follow, # and True,
                 }
             },
         )
@@ -680,14 +680,14 @@ class User:
         return self.isFollowedBycurrentUser
 
     def setBlock(self, should_block: bool = True) -> bool:
-        """blocks a user and return whether they are blocking you"""
+        """Blocks a user and return whether they are blocking you"""
         res = post(
             self.c.sid,
             "block",
             vars={
                 "input": {
                     "targetUserId": self.id,
-                    "shouldFollow": should_block and True,
+                    "shouldFollow": should_block, # and True,
                 }
             },
         )
@@ -707,7 +707,7 @@ class CurrentUser(User):
         self.auth = {"google": None, "github": None, "facebook": None}
 
     def update(self, data: Dict[str, Any] = {}):
-        """update profile"""
+        """Update profile"""
 
         login = {
             "googleAuth": None,
@@ -1168,14 +1168,14 @@ class Comment:
         return self
 
     def delete(self) -> None:
-        """delete comment"""
+        """Delete comment"""
         if "delete" not in self.currentUserPermission:
             self.currentUserPermission["delete"] = None
         if self.currentUserPermission["delete"] or self.isAuthor or self.repl.isOwner:
             post(self.c.sid, "deleteComment", vars={"id": self.id})
 
     def reply(self, body: str, **options: Dict[str, Any]):
-        """reply comment"""
+        """Reply to a comment"""
         current = {"cache": True}
         current.update(options)
         options = JSDict(current)

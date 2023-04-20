@@ -1,4 +1,4 @@
-"""file that stores the main bot runner code"""
+"""File that stores the main bot runner code"""
 
 import urllib.parse
 import logging
@@ -92,7 +92,7 @@ class Button:
 
 
 class Bot(Client):
-    """main bot object"""
+    """Main bot object"""
 
     def __init__(
         self,
@@ -113,10 +113,10 @@ class Bot(Client):
         def help_function(ctx, command):
             if command == "None":
                 if links.docs is not None:
-                    ctx.reply(f"See the docs there {links.docs}")
+                    ctx.reply(f"See the docs here {links.docs}")
                 else:
                     ctx.reply(
-                        "This bot has not docs. You can check specific commands however"
+                        "This bot does not have docs. You can check specific commands however."
                     )
             else:
                 ctx.reply(f"description of command: {self.commands[command]['desc']}")
@@ -131,7 +131,7 @@ class Bot(Client):
             ctx.reply(__current)
 
         def __not_included_params(ctx, *args, **kwargs):
-            __current = "please include all required params."
+            __current = "Please include all required params."
             __current += (
                 f" You can check the bot docs here {links.docs}"
                 if links.docs is not None
@@ -172,7 +172,7 @@ class Bot(Client):
     def command(
         self, name: str, thread: bool = False, desc: str = None, alias: List[str] = []
     ):
-        """takes in args"""
+        """Takes in args"""
         name = name.lower()
         if not name.replace("-", "").isalnum():
             raise NamesMustBeAlphanumeric("Name must be alphanumeric")
@@ -221,7 +221,7 @@ class Bot(Client):
         self._not_all_required_params_specified = func
 
     def parse_command(self, command: str):
-        """parses command
+        """Parses command
 
         `@Example-Bot /say message:hi!`
         ->
@@ -262,7 +262,7 @@ class Bot(Client):
         return output
 
     def valid_command(self, resp: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
-        """validates command. Returns true if is valid `(True, parsed_json)` or false if not `(False, {'None': None})`"""
+        """Validates command. Returns true if is valid `(True, parsed_json)` or false if not `(False, {'None': None})`"""
         if resp == {} or resp["comment"] == None:
             return (False, {"None": None})
         parsed = self.parse_command(resp["comment"]["body"])
@@ -276,7 +276,7 @@ class Bot(Client):
     def get_kwargs(
         self, resp: Dict[str, Any], given_params: Dict[str, Any]
     ) -> Tuple[Dict[str, Any], bool]:
-        """get arguements based on type hints of function"""
+        """Get arguements based on type hints of function"""
         params = resp["params"]
         output = {}
         for i in params:
@@ -291,7 +291,7 @@ class Bot(Client):
         return (True, output)
 
     def create_docs(self) -> None:
-        """automatically creates the documentation for the bot"""
+        """Automatically creates the documentation for the bot"""
         html = ORIGINAL_HTML.format(
             self.user.username,
             self.prefix,
@@ -300,7 +300,7 @@ class Bot(Client):
         for i in self.commands:
             data = self.commands[i]
             if not len(data["params"]) and not data["desc"]:
-                bio_ = "this command has no parameters"
+                bio_ = "This command has no parameters"
             else:
                 if data["desc"]:
                     bio_ = BLOCKQUOTE.format(data["desc"])
@@ -325,7 +325,7 @@ class Bot(Client):
                 continue
             data = self.listeners[i][0]
             if not len(data["params"]) and not data["desc"]:
-                bio_ = "this command has no parameters"
+                bio_ = "This command has no parameters"
             else:
                 if data["desc"]:
                     bio_ = BLOCKQUOTE.format(data["desc"])
@@ -349,14 +349,14 @@ class Bot(Client):
             return render_template("index.html", html=html)
 
     def _delete_threads(self) -> None:
-        """thread to always destroy threads"""
+        """Thread to always destroy threads"""
         while True:
             for i in self.threads_:
                 i.join()
             sleep(5)
 
     def run(self, auto_create_docs: bool = True, token: str = None) -> None:
-        """mainest runner code"""
+        """Mainest runner code"""
         if token is not None and not self.init_:
             super()
             super().__init__(token)
@@ -372,7 +372,7 @@ class Bot(Client):
             self.create_docs()
 
         def _run(notif_id, notif) -> None:
-            """main runner code"""
+            """Main runner code"""
             # MentionedInPost, MentionedInComment, RepliedToComment, RepliedToPost, AnswerAccepted, MultiplayerJoinedEmail, MultiplayerJoinedLink, MultiplayerInvited, MultiplayerOverlimit, Warning, TeamInvite, TeamOrganizationInvite, Basic, TeamTemplateSubmitted, TeamTemplateReviewedStatus, Annotation, EditRequestCreated, EditRequestAccepted, ReplCommentCreated, ReplCommentReplyCreated, ReplCommentMention, Thread, NewFollower
             post(self.sid, "markOneAsRead", {"id": notif_id})
             __typename = getattr(notif, "__typename")

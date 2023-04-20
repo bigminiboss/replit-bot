@@ -1,5 +1,3 @@
-# TUTORIAL: https://replit.com/@Howtomakeabot/How-To-Make-Replit-Bots?v=1
-
 import os
 import json
 import time
@@ -28,11 +26,11 @@ times = []
 @bot.command("enjoy-pancakes", alias=["enjoy"])
 async def enjoy(ctx):
     await ctx.reply(
-        f"hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
+        f"Hello! do you like pancakes?\n\n{ctx.button.yes}\t{ctx.button.no}",
         mention=True,
     )
     await ctx.reply(
-        "You traitor" if await ctx.button.get_choice() == "no" else "yay! we're friends"
+        "You traitor" if await ctx.button.get_choice() == "no" else "Yay! We're friends"
     )
 
 
@@ -40,10 +38,10 @@ async def enjoy(ctx):
 async def person(ctx):
     count = {"a": 0, "b": 0}
     questions = [
-        {"name": "do you like pancakes", "a": "no", "b": "yes"},
-        {"name": "do you like waffles", "a": "yes", "b": "no"},
-        {"name": "do you like eggs", "a": "yes", "b": "no"},
-        {"name": "are pancakes better than waffles?", "a": "no", "b": "yes"},
+        {"name": "Do you like pancakes", "a": "no", "b": "yes"},
+        {"name": "Do you like waffles", "a": "yes", "b": "no"},
+        {"name": "Do you like eggs", "a": "yes", "b": "no"},
+        {"name": "Are pancakes better than waffles?", "a": "no", "b": "yes"},
     ]
 
     for i in questions:
@@ -53,7 +51,7 @@ async def person(ctx):
         count[await ctx.button.get_choice()] += 1
 
     most = max(count, key=count.get)
-    await ctx.reply("You traitor" if most == "a" else "yay! we're friends")
+    await ctx.reply("You traitor" if most == "a" else "Yay! We're friends")
 
 
 @bot.command("repl")
@@ -99,9 +97,9 @@ async def _random(
 @bot.command("timer")
 async def _timer(ctx, num_time: Param(required=True, type_cast=int)):
     global times
-    await ctx.reply("starting timer")
+    await ctx.reply("Starting timer")
     await asyncio.sleep(num_time)
-    await ctx.reply("timer went off!")
+    await ctx.reply("Your timer went off!")
 
 
 @bot.command("code-info")

@@ -1,11 +1,3 @@
-copied from replapi-it from PikachB2005 since this is just the python implmentation (changed examples)
-
-At the moment, you cannot do repl interactions with this
-
-> ___
-> Replit's API is constantly changing, which means this will as well. I will try to keep it easy to use but be aware that your project may stop working at any point.
-> ___
-
 ## Install
 ```sh
 pip install replit-bot
